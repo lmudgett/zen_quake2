@@ -208,3 +208,20 @@ endfunction()
 
 q2_game_module(game ${CMAKE_CURRENT_SOURCE_DIR}/src/game baseq2)
 q2_game_module(ctf  ${CMAKE_CURRENT_SOURCE_DIR}/src/ctf  ctf)
+
+# ---------------------------------------------------------------------------
+# ref_gl3 — modern OpenGL 3.3 core renderer (loaded dynamically via GetRefAPI)
+# ---------------------------------------------------------------------------
+file(GLOB REF_GL3_SOURCES src/ref_gl3/gl3_*.c)
+add_library(ref_gl3 MODULE
+    ${REF_GL3_SOURCES}
+    src/ref_gl3/glad/src/gl.c
+)
+target_include_directories(ref_gl3 PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ref_gl3/glad/include)
+target_link_libraries(ref_gl3 PRIVATE q2_common_flags SDL3::SDL3)
+set_target_properties(ref_gl3 PROPERTIES
+    PREFIX ""            # produce ref_gl3.dll / ref_gl3.so, not libref_gl3
+    LIBRARY_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}>"
+    RUNTIME_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}>")

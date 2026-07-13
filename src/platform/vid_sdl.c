@@ -227,7 +227,13 @@ void VID_CheckChanges (void)
 		cl.refresh_prepped = false;
 		cls.disable_screen = true;
 
-		Com_sprintf (name, sizeof(name), "ref_%s", vid_ref->string);
+#ifdef _WIN32
+		Com_sprintf (name, sizeof(name), "ref_%s.dll", vid_ref->string);
+#elif defined(__APPLE__)
+		Com_sprintf (name, sizeof(name), "ref_%s.dylib", vid_ref->string);
+#else
+		Com_sprintf (name, sizeof(name), "ref_%s.so", vid_ref->string);
+#endif
 		if (!VID_LoadRefresh (name))
 		{
 			if (!strcmp (vid_ref->string, "gl3"))
