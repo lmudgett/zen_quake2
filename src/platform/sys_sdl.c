@@ -582,10 +582,10 @@ char *Sys_FindFirst (char *path, unsigned musthave, unsigned canthave)
 		findpattern[sizeof(findpattern)-1] = 0;
 	}
 	else
-		strcpy (findpattern, "*");
+		Q_strlcpy (findpattern, "*", sizeof(findpattern));
 
 	if (strcmp(findpattern, "*.*") == 0)
-		strcpy (findpattern, "*");
+		Q_strlcpy (findpattern, "*", sizeof(findpattern));
 
 	if ((fdir = opendir(findbase)) == NULL)
 		return NULL;

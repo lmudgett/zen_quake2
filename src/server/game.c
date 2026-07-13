@@ -67,7 +67,7 @@ void PF_dprintf (char *fmt, ...)
 	va_list		argptr;
 	
 	va_start (argptr,fmt);
-	vsprintf (msg, fmt, argptr);
+	vsnprintf (msg, sizeof(msg), fmt, argptr);
 	va_end (argptr);
 
 	Com_Printf ("%s", msg);
@@ -95,7 +95,7 @@ void PF_cprintf (edict_t *ent, int level, char *fmt, ...)
 	}
 
 	va_start (argptr,fmt);
-	vsprintf (msg, fmt, argptr);
+	vsnprintf (msg, sizeof(msg), fmt, argptr);
 	va_end (argptr);
 
 	if (ent)
@@ -123,7 +123,7 @@ void PF_centerprintf (edict_t *ent, char *fmt, ...)
 		return;	// Com_Error (ERR_DROP, "centerprintf to a non-client");
 
 	va_start (argptr,fmt);
-	vsprintf (msg, fmt, argptr);
+	vsnprintf (msg, sizeof(msg), fmt, argptr);
 	va_end (argptr);
 
 	MSG_WriteByte (&sv.multicast,svc_centerprint);
@@ -145,7 +145,7 @@ void PF_error (char *fmt, ...)
 	va_list		argptr;
 	
 	va_start (argptr,fmt);
-	vsprintf (msg, fmt, argptr);
+	vsnprintf (msg, sizeof(msg), fmt, argptr);
 	va_end (argptr);
 
 	Com_Error (ERR_DROP, "Game Error: %s", msg);
@@ -198,7 +198,7 @@ void PF_Configstring (int index, char *val)
 		val = "";
 
 	// change the string in sv
-	strcpy (sv.configstrings[index], val);
+	Q_strlcpy (sv.configstrings[index], val, sizeof(sv.configstrings[index]));
 	
 	if (sv.state != ss_loading)
 	{	// send the update to everyone

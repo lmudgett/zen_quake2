@@ -251,16 +251,16 @@ void SV_CopySaveGame (char *src, char *dst)
 	found = Sys_FindFirst(name, 0, 0 );
 	while (found)
 	{
-		strcpy (name+len, found+len);
+		Q_strlcpy (name+len, found+len, sizeof(name)-len);
 
 		Com_sprintf (name2, sizeof(name2), "%s/save/%s/%s", FS_Gamedir(), dst, found+len);
 		CopyFile (name, name2);
 
 		// change sav to sv2
 		l = strlen(name);
-		strcpy (name+l-3, "sv2");
+		Q_strlcpy (name+l-3, "sv2", sizeof(name)-(l-3));
 		l = strlen(name2);
-		strcpy (name2+l-3, "sv2");
+		Q_strlcpy (name2+l-3, "sv2", sizeof(name2)-(l-3));
 		CopyFile (name, name2);
 
 		found = Sys_FindNext( 0, 0 );
@@ -385,8 +385,8 @@ void SV_WriteServerFile (qboolean autosave)
 		}
 		memset (name, 0, sizeof(name));
 		memset (string, 0, sizeof(string));
-		strcpy (name, var->name);
-		strcpy (string, var->string);
+		Q_strlcpy (name, var->name, sizeof(name));
+		Q_strlcpy (string, var->string, sizeof(string));
 		fwrite (name, 1, sizeof(name), f);
 		fwrite (string, 1, sizeof(string), f);
 	}
@@ -425,6 +425,7 @@ void SV_ReadServerFile (void)
 
 	// read the mapcmd
 	FS_Read (mapcmd, sizeof(mapcmd), f);
+	mapcmd[sizeof(mapcmd)-1] = 0;	// a corrupt save must not yield an unterminated string
 
 	// read all CVAR_LATCH cvars
 	// these will be things like coop, skill, deathmatch, etc
@@ -433,6 +434,8 @@ void SV_ReadServerFile (void)
 		if (!fread (name, 1, sizeof(name), f))
 			break;
 		FS_Read (string, sizeof(string), f);
+		name[sizeof(name)-1] = 0;
+		string[sizeof(string)-1] = 0;
 		Com_DPrintf ("Set %s = %s\n", name, string);
 		Cvar_ForceSet (name, string);
 	}
@@ -442,7 +445,7 @@ void SV_ReadServerFile (void)
 	// start a new game fresh with new cvars
 	SV_InitGame ();
 
-	strcpy (svs.mapcmd, mapcmd);
+	Q_strlcpy (svs.mapcmd, mapcmd, sizeof(svs.mapcmd));
 
 	// read game state
 	Com_sprintf (name, sizeof(name), "%s/save/current/game.ssv", FS_Gamedir());
@@ -801,7 +804,7 @@ void SV_ConSay_f(void)
 	if (Cmd_Argc () < 2)
 		return;
 
-	strcpy (text, "console: ");
+	Q_strlcpy (text, "console: ", sizeof(text));
 	p = Cmd_Args();
 
 	if (*p == '"')
@@ -810,7 +813,7 @@ void SV_ConSay_f(void)
 		p[strlen(p)-1] = 0;
 	}
 
-	strcat(text, p);
+	Q_strlcat(text, p, sizeof(text));
 
 	for (j = 0, client = svs.clients; j < maxclients->value; j++, client++)
 	{

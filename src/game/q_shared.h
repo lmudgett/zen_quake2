@@ -219,12 +219,14 @@ char *COM_SkipPath (char *pathname);
 void COM_StripExtension (char *in, char *out);
 void COM_FileBase (char *in, char *out);
 void COM_FilePath (char *in, char *out);
-void COM_DefaultExtension (char *path, char *extension);
+void COM_DefaultExtension (char *path, size_t size, char *extension);
 
 char *COM_Parse (char **data_p);
 // data is an in/out parm, returns a parsed out token
 
 void Com_sprintf (char *dest, int size, char *fmt, ...);
+size_t Q_strlcpy (char *dst, const char *src, size_t size);
+size_t Q_strlcat (char *dst, const char *src, size_t size);
 
 void Com_PageInMemory (byte *buffer, int size);
 

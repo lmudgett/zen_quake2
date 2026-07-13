@@ -904,7 +904,7 @@ void COM_FilePath (char *in, char *out)
 COM_DefaultExtension
 ==================
 */
-void COM_DefaultExtension (char *path, char *extension)
+void COM_DefaultExtension (char *path, size_t size, char *extension)
 {
 	char    *src;
 //
@@ -920,7 +920,7 @@ void COM_DefaultExtension (char *path, char *extension)
 		src--;
 	}
 
-	strcat (path, extension);
+	Q_strlcat (path, extension, size);
 }
 
 /*
@@ -1053,10 +1053,10 @@ char	*va(char *format, ...)
 	static char		string[1024];
 	
 	va_start (argptr, format);
-	vsprintf (string, format,argptr);
+	vsnprintf (string, sizeof(string), format, argptr);
 	va_end (argptr);
 
-	return string;	
+	return string;
 }
 
 
@@ -1224,14 +1224,53 @@ void Com_sprintf (char *dest, int size, char *fmt, ...)
 {
 	int		len;
 	va_list		argptr;
-	char	bigbuffer[0x10000];
 
 	va_start (argptr,fmt);
-	len = vsprintf (bigbuffer,fmt,argptr);
+	len = vsnprintf (dest, size, fmt, argptr);
 	va_end (argptr);
 	if (len >= size)
 		Com_Printf ("Com_sprintf: overflow of %i in %i\n", len, size);
-	strncpy (dest, bigbuffer, size-1);
+}
+
+/*
+=============
+Q_strlcpy
+
+Bounded string copy that always NUL-terminates.
+Returns strlen(src) so callers can detect truncation.
+=============
+*/
+size_t Q_strlcpy (char *dst, const char *src, size_t size)
+{
+	size_t	srclen = strlen (src);
+
+	if (size)
+	{
+		size_t	copylen = (srclen >= size) ? size-1 : srclen;
+		memcpy (dst, src, copylen);
+		dst[copylen] = 0;
+	}
+
+	return srclen;
+}
+
+/*
+=============
+Q_strlcat
+
+Bounded string append that always NUL-terminates.
+Returns the length it tried to create for truncation detection.
+=============
+*/
+size_t Q_strlcat (char *dst, const char *src, size_t size)
+{
+	size_t	dstlen = strlen (dst);
+	size_t	srclen = strlen (src);
+
+	if (dstlen + 1 < size)
+		Q_strlcpy (dst + dstlen, src, size - dstlen);
+
+	return dstlen + srclen;
 }
 
 /*
@@ -1315,6 +1354,8 @@ void Info_RemoveKey (char *s, char *key)
 		{
 			if (!*s)
 				return;
+			if (o >= pkey + sizeof(pkey) - 1)
+				return;		// oversized key: hostile info string
 			*o++ = *s++;
 		}
 		*o = 0;
@@ -1325,13 +1366,15 @@ void Info_RemoveKey (char *s, char *key)
 		{
 			if (!*s)
 				return;
+			if (o >= value + sizeof(value) - 1)
+				return;		// oversized value: hostile info string
 			*o++ = *s++;
 		}
 		*o = 0;
 
 		if (!strcmp (key, pkey) )
 		{
-			strcpy (start, s);	// remove this part
+			memmove (start, s, strlen(s) + 1);	// remove this part (regions overlap)
 			return;
 		}
 
@@ -1394,7 +1437,7 @@ void Info_SetValueForKey (char *s, char *key, char *value)
 
 	Com_sprintf (newi, sizeof(newi), "\\%s\\%s", key, value);
 
-	if (strlen(newi) + strlen(s) > maxsize)
+	if (strlen(newi) + strlen(s) >= maxsize)
 	{
 		Com_Printf ("Info string length exceeded\n");
 		return;

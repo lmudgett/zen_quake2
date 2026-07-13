@@ -486,13 +486,16 @@ pack_t *FS_LoadPackFile (char *packfile)
 // parse the directory
 	for (i=0 ; i<numpackfiles ; i++)
 	{
-		strcpy (newfiles[i].name, info[i].name);
+		// the on-disk name field is not guaranteed NUL-terminated; copy the
+		// raw 56 bytes and terminate ourselves (name[MAX_QPATH] is larger)
+		memcpy (newfiles[i].name, info[i].name, sizeof(info[i].name));
+		newfiles[i].name[sizeof(info[i].name)] = 0;
 		newfiles[i].filepos = LittleLong(info[i].filepos);
 		newfiles[i].filelen = LittleLong(info[i].filelen);
 	}
 
 	pack = Z_Malloc (sizeof (pack_t));
-	strcpy (pack->filename, packfile);
+	Q_strlcpy (pack->filename, packfile, sizeof(pack->filename));
 	pack->handle = packhandle;
 	pack->numfiles = numpackfiles;
 	pack->files = newfiles;
@@ -517,13 +520,13 @@ void FS_AddGameDirectory (char *dir)
 	pack_t			*pak;
 	char			pakfile[MAX_OSPATH];
 
-	strcpy (fs_gamedir, dir);
+	Q_strlcpy (fs_gamedir, dir, sizeof(fs_gamedir));
 
 	//
 	// add the directory to the search path
 	//
 	search = Z_Malloc (sizeof(searchpath_t));
-	strcpy (search->filename, dir);
+	Q_strlcpy (search->filename, dir, sizeof(search->filename));
 	search->next = fs_searchpaths;
 	fs_searchpaths = search;
 
@@ -740,7 +743,7 @@ void FS_Dir_f( void )
 
 	if ( Cmd_Argc() != 1 )
 	{
-		strcpy( wildcard, Cmd_Argv( 1 ) );
+		Q_strlcpy( wildcard, Cmd_Argv( 1 ), sizeof(wildcard) );
 	}
 
 	while ( ( path = FS_NextPath( path ) ) != NULL )

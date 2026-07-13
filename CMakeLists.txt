@@ -38,7 +38,9 @@ add_library(q2_common_flags INTERFACE)
 if(MSVC)
     target_compile_definitions(q2_common_flags INTERFACE
         _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE C_ONLY)
-    target_compile_options(q2_common_flags INTERFACE /std:clatest /W3)
+    target_compile_options(q2_common_flags INTERFACE /std:clatest /W3
+        /guard:cf /sdl)          # control-flow guard + extra runtime checks
+    target_link_options(q2_common_flags INTERFACE /guard:cf)
 else()
     check_c_compiler_flag(-std=gnu23 HAVE_STD_GNU23)
     if(HAVE_STD_GNU23)
@@ -49,6 +51,9 @@ else()
     target_compile_definitions(q2_common_flags INTERFACE C_ONLY)
     target_compile_options(q2_common_flags INTERFACE
         -fno-strict-aliasing -fwrapv
+        -fstack-protector-strong
+        $<$<NOT:$<CONFIG:Debug>>:-D_FORTIFY_SOURCE=2>
+        -Werror=format-security
         -Wall -Wno-unused-parameter -Wno-sign-compare
         -Wno-unused-but-set-variable)
 endif()
@@ -70,14 +75,14 @@ set(QCOMMON_SOURCES
 )
 
 set(SERVER_SOURCES
-    src/server/sv_ccmds.c
-    src/server/sv_ents.c
-    src/server/sv_game.c
-    src/server/sv_init.c
-    src/server/sv_main.c
-    src/server/sv_send.c
-    src/server/sv_user.c
-    src/server/sv_world.c
+    src/server/ccmds.c
+    src/server/ents.c
+    src/server/game.c
+    src/server/init.c
+    src/server/main.c
+    src/server/send.c
+    src/server/user.c
+    src/server/world.c
 )
 
 add_executable(q2ded

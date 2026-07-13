@@ -192,21 +192,21 @@ void SV_SpawnServer (char *server, char *spawnpoint, server_state_t serverstate,
 	sv.attractloop = attractloop;
 
 	// save name for levels that don't set message
-	strcpy (sv.configstrings[CS_NAME], server);
+	Q_strlcpy (sv.configstrings[CS_NAME], server, sizeof(sv.configstrings[CS_NAME]));
 	if (Cvar_VariableValue ("deathmatch"))
 	{
-		sprintf(sv.configstrings[CS_AIRACCEL], "%g", sv_airaccelerate->value);
+		Com_sprintf(sv.configstrings[CS_AIRACCEL], sizeof(sv.configstrings[CS_AIRACCEL]), "%g", sv_airaccelerate->value);
 		pm_airaccelerate = sv_airaccelerate->value;
 	}
 	else
 	{
-		strcpy(sv.configstrings[CS_AIRACCEL], "0");
+		Q_strlcpy(sv.configstrings[CS_AIRACCEL], "0", sizeof(sv.configstrings[CS_AIRACCEL]));
 		pm_airaccelerate = 0;
 	}
 
 	SZ_Init (&sv.multicast, sv.multicast_buf, sizeof(sv.multicast_buf));
 
-	strcpy (sv.name, server);
+	Q_strlcpy (sv.name, server, sizeof(sv.name));
 
 	// leave slots at start for clients only
 	for (i=0 ; i<maxclients->value ; i++)
@@ -219,8 +219,8 @@ void SV_SpawnServer (char *server, char *spawnpoint, server_state_t serverstate,
 
 	sv.time = 1000;
 	
-	strcpy (sv.name, server);
-	strcpy (sv.configstrings[CS_NAME], server);
+	Q_strlcpy (sv.name, server, sizeof(sv.name));
+	Q_strlcpy (sv.configstrings[CS_NAME], server, sizeof(sv.configstrings[CS_NAME]));
 
 	if (serverstate != ss_game)
 	{
@@ -403,7 +403,7 @@ void SV_Map (qboolean attractloop, char *levelstring, qboolean loadgame)
 	if (sv.state == ss_dead && !sv.loadgame)
 		SV_InitGame ();	// the game is just starting
 
-	strcpy (level, levelstring);
+	Q_strlcpy (level, levelstring, sizeof(level));
 
 	// if there is a + in the map, set nextserver to the remainder
 	ch = strstr(level, "+");
@@ -424,14 +424,14 @@ void SV_Map (qboolean attractloop, char *levelstring, qboolean loadgame)
 	if (ch)
 	{
 		*ch = 0;
-		strcpy (spawnpoint, ch+1);
+		Q_strlcpy (spawnpoint, ch+1, sizeof(spawnpoint));
 	}
 	else
 		spawnpoint[0] = 0;
 
 	// skip the end-of-unit flag if necessary
 	if (level[0] == '*')
-		strcpy (level, level+1);
+		memmove (level, level+1, strlen(level));
 
 	l = strlen(level);
 	if (l > 4 && !strcmp (level+l-4, ".cin") )

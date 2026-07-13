@@ -315,9 +315,9 @@ qboolean Cbuf_AddLateCommands (void)
 	text[0] = 0;
 	for (i=1 ; i<argc ; i++)
 	{
-		strcat (text,COM_Argv(i));
+		Q_strlcat (text,COM_Argv(i),s+1);
 		if (i != argc-1)
-			strcat (text, " ");
+			Q_strlcat (text, " ", s+1);
 	}
 	
 // pull out the commands
@@ -336,8 +336,8 @@ qboolean Cbuf_AddLateCommands (void)
 			c = text[j];
 			text[j] = 0;
 			
-			strcat (build, text+i);
-			strcat (build, "\n");
+			Q_strlcat (build, text+i, s+1);
+			Q_strlcat (build, "\n", s+1);
 			text[j] = c;
 			i = j-1;
 		}
@@ -460,18 +460,18 @@ void Cmd_Alias_f (void)
 		a->next = cmd_alias;
 		cmd_alias = a;
 	}
-	strcpy (a->name, s);	
+	Q_strlcpy (a->name, s, sizeof(a->name));
 
 // copy the rest of the command line
 	cmd[0] = 0;		// start out with a null string
 	c = Cmd_Argc();
 	for (i=2 ; i< c ; i++)
 	{
-		strcat (cmd, Cmd_Argv(i));
+		Q_strlcat (cmd, Cmd_Argv(i), sizeof(cmd));
 		if (i != (c - 1))
-			strcat (cmd, " ");
+			Q_strlcat (cmd, " ", sizeof(cmd));
 	}
-	strcat (cmd, "\n");
+	Q_strlcat (cmd, "\n", sizeof(cmd));
 	
 	a->value = CopyString (cmd);
 }
@@ -585,10 +585,10 @@ char *Cmd_MacroExpandString (char *text)
 		}
 
 		strncpy (temporary, scan, i);
-		strcpy (temporary+i, token);
-		strcpy (temporary+i+j, start);
+		Q_strlcpy (temporary+i, token, sizeof(temporary)-i);
+		Q_strlcpy (temporary+i+j, start, sizeof(temporary)-i-j);
 
-		strcpy (expanded, temporary);
+		Q_strlcpy (expanded, temporary, sizeof(expanded));
 		scan = expanded;
 		i--;
 
@@ -657,7 +657,7 @@ void Cmd_TokenizeString (char *text, qboolean macroExpand)
 		{
 			int		l;
 
-			strcpy (cmd_args, text);
+			Q_strlcpy (cmd_args, text, sizeof(cmd_args));
 
 			// strip off any trailing whitespace
 			l = strlen(cmd_args) - 1;

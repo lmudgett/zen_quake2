@@ -626,7 +626,7 @@ cmodel_t *CM_LoadMap (char *name, qboolean clientload, unsigned *checksum)
 	memset (portalopen, 0, sizeof(portalopen));
 	FloodAreaConnections ();
 
-	strcpy (map_name, name);
+	Q_strlcpy (map_name, name, sizeof(map_name));
 
 	return &map_cmodels[0];
 }
