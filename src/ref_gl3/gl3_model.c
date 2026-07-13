@@ -646,6 +646,10 @@ static void Mod_LoadFaces (lump_t *l)
 
 	// set the drawing flags
 
+		if (out->texinfo->flags & SURF_SKY)
+			out->flags |= SURF_DRAWSKY;	// skipped by the world pass so the
+										// skybox shows through the hole
+
 		if (out->texinfo->flags & SURF_WARP)
 		{
 			out->flags |= SURF_DRAWTURB;

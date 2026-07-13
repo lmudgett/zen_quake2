@@ -70,7 +70,8 @@ static const char *frag2d =
 	"out vec4 frag;\n"
 	"void main() {\n"
 	"    vec4 c = texture(u_tex, v_uv) * u_color;\n"
-	"    c.rgb = pow(c.rgb * u_intensity, vec3(1.0 / u_gamma));\n"
+	// vanilla gamma-table semantics: pow(c, gamma), gamma < 1 brightens
+	"    c.rgb = pow(c.rgb * u_intensity, vec3(u_gamma));\n"
 	"    frag = c;\n"
 	"}\n";
 
@@ -105,7 +106,7 @@ static const char *frag3d =
 	"    vec3 c = diff.rgb * u_intensity;\n"
 	"    if (u_lm_enabled != 0)\n"
 	"        c *= texture(u_lightmap, v_lmuv).rgb * 2.0;\n"	// overbright
-	"    c = pow(c, vec3(1.0 / u_gamma));\n"
+	"    c = pow(c, vec3(u_gamma));\n"
 	"    frag = vec4(c, diff.a * u_alpha);\n"
 	"}\n";
 
@@ -139,7 +140,7 @@ static const char *fragAlias =
 	"    vec4 t = texture(u_tex, v_uv);\n"
 	"    if (t.a * v_color.a < u_alphacut) discard;\n"
 	"    vec3 c = t.rgb * v_color.rgb * u_intensity;\n"
-	"    c = pow(c, vec3(1.0 / u_gamma));\n"
+	"    c = pow(c, vec3(u_gamma));\n"
 	"    frag = vec4(c, t.a * v_color.a);\n"
 	"}\n";
 
@@ -171,7 +172,7 @@ static const char *fragWarp =
 	"    w.y = v_uv.y + sin(v_uv.x * 0.125 + u_time) * 8.0;\n"
 	"    w /= 64.0;\n"
 	"    vec4 t = texture(u_tex, w);\n"
-	"    vec3 c = pow(t.rgb * u_intensity, vec3(1.0 / u_gamma));\n"
+	"    vec3 c = pow(t.rgb * u_intensity, vec3(u_gamma));\n"
 	"    frag = vec4(c, t.a);\n"
 	"}\n";
 
@@ -199,7 +200,7 @@ static const char *fragPart =
 	"void main() {\n"
 	"    vec2 d = gl_PointCoord - vec2(0.5);\n"
 	"    if (dot(d, d) > 0.25) discard;\n"			// round particle
-	"    vec3 c = pow(v_color.rgb, vec3(1.0 / u_gamma));\n"
+	"    vec3 c = pow(v_color.rgb, vec3(u_gamma));\n"
 	"    frag = vec4(c, v_color.a);\n"
 	"}\n";
 
