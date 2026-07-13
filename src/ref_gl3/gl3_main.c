@@ -12,6 +12,7 @@ cvar_t	*vid_fullscreen;
 cvar_t	*vid_gamma;
 cvar_t	*gl_clear;
 cvar_t	*gl_intensity;
+cvar_t	*r_drawentities;
 
 void GL3_SetRawPalette (const unsigned char *palette);	// gl3_draw.c
 void GL3_ScreenShot_f (void);							// gl3_screenshot.c
@@ -55,6 +56,7 @@ void Com_Printf (char *fmt, ...)
 // in gl3_model.c. Pics come from the image manager.
 
 refdef_t	r_newrefdef;
+float		gl3_viewproj[16];		// proj * view for the current frame
 
 static struct image_s *GL3_RegisterPic (char *name)
 {
@@ -95,7 +97,37 @@ static void GL3_SetupWorldMatrix (float *mvp)
 	GL3_MatMul (mv, mv, tmp);
 
 	GL3_MatMul (mvp, proj, mv);
+	memcpy (gl3_viewproj, mvp, sizeof(gl3_viewproj));	// entities post-multiply their model matrix
 	(void)r;
+}
+
+static void GL3_DrawEntities (void)
+{
+	int	i;
+
+	if (!r_drawentities || !r_drawentities->value)
+		return;
+
+	for (i = 0; i < r_newrefdef.num_entities; i++)
+	{
+		entity_t	*e = &r_newrefdef.entities[i];
+
+		if (e->flags & RF_BEAM)
+			continue;			// beams drawn later
+		if (!e->model)
+			continue;			// null-model boxes later
+
+		switch (e->model->type)
+		{
+		case mod_alias:
+			GL3_DrawAliasModel (e, gl3_viewproj);
+			break;
+		case mod_brush:
+		case mod_sprite:
+		default:
+			break;				// inline bmodels / sprites in a later sub-stage
+		}
+	}
 }
 
 static void GL3_RenderFrame (refdef_t *fd)
@@ -130,6 +162,7 @@ static void GL3_RenderFrame (refdef_t *fd)
 
 	GL3_MarkLeaves ();
 	GL3_DrawWorld ();
+	GL3_DrawEntities ();
 
 	// restore 2D state for the HUD/console the client draws next
 	glDisable (GL_DEPTH_TEST);
@@ -170,6 +203,7 @@ static int GL3_Init (void *hinstance, void *wndproc)
 	vid_gamma = ri.Cvar_Get ("vid_gamma", "1", CVAR_ARCHIVE);
 	gl_clear = ri.Cvar_Get ("gl_clear", "0", 0);
 	gl_intensity = ri.Cvar_Get ("intensity", "2", CVAR_ARCHIVE);
+	r_drawentities = ri.Cvar_Get ("r_drawentities", "1", 0);
 
 	Swap_Init ();	// the renderer has its own copy of q_shared's byte-swap pointers
 
@@ -183,6 +217,7 @@ static int GL3_Init (void *hinstance, void *wndproc)
 	GL3_CreateNoTexture ();
 	GL3_InitShaders ();
 	GL3_Draw_Init ();
+	GL3_InitMesh ();
 	GL3_Mod_Init ();
 
 	ri.Cmd_AddCommand ("imagelist", GL3_ImageList_f);
@@ -199,6 +234,7 @@ static void GL3_Shutdown (void)
 	ri.Cmd_RemoveCommand ("modellist");
 	ri.Cmd_RemoveCommand ("screenshot");
 	GL3_Mod_FreeAll ();
+	GL3_ShutdownMesh ();
 	GL3_Draw_Shutdown ();
 	GL3_ShutdownShaders ();
 	GL3_ShutdownImages ();

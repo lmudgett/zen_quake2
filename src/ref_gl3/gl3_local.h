@@ -141,4 +141,20 @@ void GL3_BuildWorldVBO (void);			// upload all world polys after registration
 void GL3_DrawWorld (void);				// draw the visible world this frame
 void GL3_MarkLeaves (void);
 
+// entity alias models (gl3_mesh.c)
+typedef struct
+{
+	GLuint	program;
+	GLint	u_mvp;
+	GLint	u_gamma;
+	GLint	u_intensity;
+} gl3progalias_t;
+extern gl3progalias_t	gl3_prog_alias;
+
+void GL3_InitMesh (void);				// create VAO/VBO
+void GL3_ShutdownMesh (void);
+void GL3_DrawAliasModel (entity_t *e, const float *viewproj);
+
+extern float	gl3_viewproj[16];		// projection * view for the current frame
+
 #endif // GL3_LOCAL_H

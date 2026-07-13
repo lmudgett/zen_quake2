@@ -34,6 +34,7 @@ GLuint GL3_CompileProgram (const char *vtx, const char *frag)
 	glBindAttribLocation (prog, 0, "a_pos");
 	glBindAttribLocation (prog, 1, "a_uv");
 	glBindAttribLocation (prog, 2, "a_lmuv");
+	glBindAttribLocation (prog, 3, "a_color");
 	glLinkProgram (prog);
 	glGetProgramiv (prog, GL_LINK_STATUS, &ok);
 	if (!ok)
@@ -109,6 +110,38 @@ static const char *frag3d =
 
 gl3prog3d_t	gl3_prog3d;
 
+// ---- alias models (MD2): texture * per-vertex light ----
+static const char *vtxAlias =
+	"#version 330 core\n"
+	"in vec3 a_pos;\n"
+	"in vec2 a_uv;\n"
+	"in vec4 a_color;\n"
+	"uniform mat4 u_mvp;\n"
+	"out vec2 v_uv;\n"
+	"out vec4 v_color;\n"
+	"void main() {\n"
+	"    v_uv = a_uv;\n"
+	"    v_color = a_color;\n"
+	"    gl_Position = u_mvp * vec4(a_pos, 1.0);\n"
+	"}\n";
+
+static const char *fragAlias =
+	"#version 330 core\n"
+	"in vec2 v_uv;\n"
+	"in vec4 v_color;\n"
+	"uniform sampler2D u_tex;\n"
+	"uniform float u_gamma;\n"
+	"uniform float u_intensity;\n"
+	"out vec4 frag;\n"
+	"void main() {\n"
+	"    vec4 t = texture(u_tex, v_uv);\n"
+	"    vec3 c = t.rgb * v_color.rgb * u_intensity;\n"
+	"    c = pow(c, vec3(1.0 / u_gamma));\n"
+	"    frag = vec4(c, t.a * v_color.a);\n"
+	"}\n";
+
+gl3progalias_t	gl3_prog_alias;
+
 void GL3_InitShaders (void)
 {
 	gl3_prog2d.program = GL3_CompileProgram (vtx2d, frag2d);
@@ -128,6 +161,13 @@ void GL3_InitShaders (void)
 	glUseProgram (gl3_prog3d.program);
 	glUniform1i (glGetUniformLocation (gl3_prog3d.program, "u_tex"), 0);		// diffuse on unit 0
 	glUniform1i (glGetUniformLocation (gl3_prog3d.program, "u_lightmap"), 1);	// lightmap on unit 1
+
+	gl3_prog_alias.program = GL3_CompileProgram (vtxAlias, fragAlias);
+	gl3_prog_alias.u_mvp = glGetUniformLocation (gl3_prog_alias.program, "u_mvp");
+	gl3_prog_alias.u_gamma = glGetUniformLocation (gl3_prog_alias.program, "u_gamma");
+	gl3_prog_alias.u_intensity = glGetUniformLocation (gl3_prog_alias.program, "u_intensity");
+	glUseProgram (gl3_prog_alias.program);
+	glUniform1i (glGetUniformLocation (gl3_prog_alias.program, "u_tex"), 0);
 }
 
 void GL3_ShutdownShaders (void)
@@ -136,6 +176,9 @@ void GL3_ShutdownShaders (void)
 		glDeleteProgram (gl3_prog2d.program);
 	if (gl3_prog3d.program)
 		glDeleteProgram (gl3_prog3d.program);
+	if (gl3_prog_alias.program)
+		glDeleteProgram (gl3_prog_alias.program);
 	memset (&gl3_prog2d, 0, sizeof(gl3_prog2d));
 	memset (&gl3_prog3d, 0, sizeof(gl3_prog3d));
+	memset (&gl3_prog_alias, 0, sizeof(gl3_prog_alias));
 }
