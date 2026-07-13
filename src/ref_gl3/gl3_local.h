@@ -139,6 +139,7 @@ void GL3_EndBuildingLightmaps (void);
 // world rendering (gl3_surf.c)
 void GL3_BuildWorldVBO (void);			// upload all world polys after registration
 void GL3_DrawWorld (void);				// draw the visible world this frame
+void GL3_DrawBrushModel (entity_t *e, const float *viewproj);	// inline bmodels (doors/plats)
 void GL3_MarkLeaves (void);
 
 // entity alias models (gl3_mesh.c)

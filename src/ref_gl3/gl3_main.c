@@ -123,9 +123,11 @@ static void GL3_DrawEntities (void)
 			GL3_DrawAliasModel (e, gl3_viewproj);
 			break;
 		case mod_brush:
+			GL3_DrawBrushModel (e, gl3_viewproj);
+			break;
 		case mod_sprite:
 		default:
-			break;				// inline bmodels / sprites in a later sub-stage
+			break;				// sprites in a later sub-stage
 		}
 	}
 }

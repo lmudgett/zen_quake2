@@ -342,3 +342,69 @@ void GL3_DrawWorld (void)
 		}
 	}
 }
+
+// draw a single world surface (diffuse + lightmap) -- used for inline bmodels
+static void GL3_DrawSurface (msurface_t *surf)
+{
+	image_t		*img;
+	glpoly_t	*p;
+	int			lit;
+
+	if (surf->flags & SURF_DRAWSKY)
+		return;
+
+	img = surf->texinfo ? GL3_TextureAnimation (surf->texinfo) : NULL;
+	if (!img)
+		img = r_notexture;
+
+	lit = !(surf->flags & SURF_DRAWTURB) && surf->lightmaptexturenum > 0;
+	glUniform1i (gl3_prog3d.u_lm_enabled, lit);
+	if (lit)
+	{
+		glActiveTexture (GL_TEXTURE1);
+		glBindTexture (GL_TEXTURE_2D, gl3_lightmap_tex[surf->lightmaptexturenum]);
+		glActiveTexture (GL_TEXTURE0);
+	}
+	GL3_Bind (img->texnum);
+
+	for (p = surf->polys; p; p = p->next)
+	{
+		glDrawArrays (GL_TRIANGLE_FAN, p->vbo_firstvert, p->numverts);
+		c_brush_polys++;
+	}
+}
+
+/*
+=================
+GL3_DrawBrushModel
+
+Inline brush models (doors, platforms, buttons) are submodels of the world:
+their surfaces already live in the world VBO, so we just draw that surface
+range with the entity's transform applied.
+=================
+*/
+void GL3_DrawBrushModel (entity_t *e, const float *viewproj)
+{
+	model_t		*mod = (model_t *)e->model;
+	float		model_mat[16], mvp[16], tmp[16];
+	msurface_t	*surf;
+	int			i;
+
+	if (!mod || mod->nummodelsurfaces == 0)
+		return;
+
+	// model matrix: translate then yaw/pitch/roll (R_RotateForEntity)
+	GL3_MatTranslate (model_mat, e->origin[0], e->origin[1], e->origin[2]);
+	GL3_MatRotate (tmp, e->angles[1], 0, 0, 1); GL3_MatMul (model_mat, model_mat, tmp);
+	GL3_MatRotate (tmp, e->angles[0], 0, 1, 0); GL3_MatMul (model_mat, model_mat, tmp);
+	GL3_MatRotate (tmp, e->angles[2], 1, 0, 0); GL3_MatMul (model_mat, model_mat, tmp);
+	GL3_MatMul (mvp, viewproj, model_mat);
+
+	glUseProgram (gl3_prog3d.program);
+	glUniformMatrix4fv (gl3_prog3d.u_mvp, 1, GL_FALSE, mvp);
+	glBindVertexArray (world_vao);
+
+	surf = r_worldmodel->surfaces + mod->firstmodelsurface;
+	for (i = 0; i < mod->nummodelsurfaces; i++, surf++)
+		GL3_DrawSurface (surf);
+}
