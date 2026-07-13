@@ -509,14 +509,17 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 		((int)(e->angles[1] * (SHADEDOT_QUANT / 360.0))) & (SHADEDOT_QUANT - 1)];
 
 	//
-	// build the model matrix (matches R_RotateForEntity)
+	// build the model matrix (matches R_RotateForEntity with the original's
+	// alias-only pitch negation -- "e->angles[PITCH] = -e->angles[PITCH]; sigh."
+	// -- so the net pitch rotation is positive; without it the view weapon
+	// pitches opposite to the camera)
 	//
 	GL3_MatIdentity (model);
 	GL3_MatTranslate (tmp, e->origin[0], e->origin[1], e->origin[2]);
 	GL3_MatMul (model, model, tmp);
 	GL3_MatRotate (tmp, e->angles[1], 0, 0, 1);		// yaw
 	GL3_MatMul (model, model, tmp);
-	GL3_MatRotate (tmp, -e->angles[0], 0, 1, 0);	// pitch
+	GL3_MatRotate (tmp, e->angles[0], 0, 1, 0);		// pitch (sign flipped, see above)
 	GL3_MatMul (model, model, tmp);
 	GL3_MatRotate (tmp, -e->angles[2], 1, 0, 0);	// roll
 	GL3_MatMul (model, model, tmp);
@@ -654,6 +657,10 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 		glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	}
 
+	// view weapon: compress depth range so it never pokes into world geometry
+	if (e->flags & RF_DEPTHHACK)
+		glDepthRange (0.0, 0.3);
+
 	glBindVertexArray (mesh_vao);
 	glBindBuffer (GL_ARRAY_BUFFER, mesh_vbo);
 	glBufferData (GL_ARRAY_BUFFER, s_numverts * sizeof(gl3_meshvert_t),
@@ -661,6 +668,9 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 	glDrawArrays (GL_TRIANGLES, 0, s_numverts);
 	glBindVertexArray (0);
 	glBindBuffer (GL_ARRAY_BUFFER, 0);
+
+	if (e->flags & RF_DEPTHHACK)
+		glDepthRange (0.0, 1.0);
 
 	if (e->flags & RF_TRANSLUCENT)
 		glDisable (GL_BLEND);
