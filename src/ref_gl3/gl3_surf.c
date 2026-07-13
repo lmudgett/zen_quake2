@@ -261,9 +261,16 @@ static void R_BuildLightMap (msurface_t *surf, byte *dest, int stride)
 
 		for (maps = 0; maps < MAXLIGHTMAPS && surf->styles[maps] != 255; maps++)
 		{
+			// current animated style values when rendering; defaults at load
+			lightstyle_t	*style = r_newrefdef.lightstyles
+				? &r_newrefdef.lightstyles[surf->styles[maps]]
+				: &gl3_lightstyles[surf->styles[maps]];
+
 			bl = s_blocklights;
 			for (i = 0; i < 3; i++)
-				scale[i] = modulate * gl3_lightstyles[surf->styles[maps]].rgb[i];
+				scale[i] = modulate * style->rgb[i];
+			surf->cached_light[maps] = style->white;	// change detection
+
 			for (i = 0; i < size; i++, bl += 3)
 			{
 				bl[0] += lightmap[i * 3 + 0] * scale[0];
@@ -384,6 +391,37 @@ static void GL3_UpdateDynamicLightmap (msurface_t *surf)
 
 	glActiveTexture (GL_TEXTURE1);
 	glBindTexture (GL_TEXTURE_2D, gl3_lightmap_dyn);
+	glTexSubImage2D (GL_TEXTURE_2D, 0, surf->light_s, surf->light_t, smax, tmax,
+		GL_RGBA, GL_UNSIGNED_BYTE, scratch);
+	glActiveTexture (GL_TEXTURE0);
+}
+
+// true if any of the surface's lightstyles animated since its block was built
+static qboolean GL3_LightstylesChanged (msurface_t *surf)
+{
+	int	map;
+
+	if (!r_newrefdef.lightstyles || !gl_dynamic || !gl_dynamic->value)
+		return false;
+
+	for (map = 0; map < MAXLIGHTMAPS && surf->styles[map] != 255; map++)
+		if (r_newrefdef.lightstyles[surf->styles[map]].white != surf->cached_light[map])
+			return true;
+	return false;
+}
+
+// rebuild an animated-style surface's block into its OWN page (it stays
+// valid until the style changes again); leaves that page bound on unit 1
+static void GL3_UpdateStaticLightmap (msurface_t *surf)
+{
+	static byte	scratch[18 * 18 * LIGHTMAP_BYTES];
+	int			smax = (surf->extents[0] >> 4) + 1;
+	int			tmax = (surf->extents[1] >> 4) + 1;
+
+	R_BuildLightMap (surf, scratch, smax * LIGHTMAP_BYTES);
+
+	glActiveTexture (GL_TEXTURE1);
+	glBindTexture (GL_TEXTURE_2D, gl3_lightmap_tex[surf->lightmaptexturenum]);
 	glTexSubImage2D (GL_TEXTURE_2D, 0, surf->light_s, surf->light_t, smax, tmax,
 		GL_RGBA, GL_UNSIGNED_BYTE, scratch);
 	glActiveTexture (GL_TEXTURE0);
@@ -732,6 +770,12 @@ void GL3_DrawWorld (void)
 			GL3_UpdateDynamicLightmap (surf);
 			cur_lm = -1;			// next static surface must rebind its page
 		}
+		else if (lit && GL3_LightstylesChanged (surf))
+		{
+			// animated lightstyle: refresh the block in its own page
+			GL3_UpdateStaticLightmap (surf);
+			cur_lm = surf->lightmaptexturenum;	// left bound by the update
+		}
 		else if (lit && surf->lightmaptexturenum != cur_lm)
 		{
 			glActiveTexture (GL_TEXTURE1);
@@ -868,6 +912,10 @@ static void GL3_DrawSurface (msurface_t *surf)
 	if (lit && surf->dlightframe == r_framecount)
 	{
 		GL3_UpdateDynamicLightmap (surf);	// binds the dynamic page
+	}
+	else if (lit && GL3_LightstylesChanged (surf))
+	{
+		GL3_UpdateStaticLightmap (surf);	// refresh + bind its own page
 	}
 	else if (lit)
 	{
