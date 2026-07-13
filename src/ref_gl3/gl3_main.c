@@ -17,6 +17,25 @@ void GL3_SetRawPalette (const unsigned char *palette);	// gl3_draw.c
 void GL3_ScreenShot_f (void);							// gl3_screenshot.c
 void GL3_ScreenShot_Capture (void);						// gl3_screenshot.c
 
+image_t	*r_notexture;
+
+// build a small magenta/black checkerboard used when a texture is missing
+static void GL3_CreateNoTexture (void)
+{
+	byte	data[16 * 16 * 4];
+	int		x, y;
+
+	for (y = 0; y < 16; y++)
+		for (x = 0; x < 16; x++)
+		{
+			byte	*p = data + (y * 16 + x) * 4;
+			byte	c = ((x >> 3) ^ (y >> 3)) ? 255 : 0;
+			p[0] = c; p[1] = 0; p[2] = c; p[3] = 255;
+		}
+
+	r_notexture = GL3_LoadPic ("***r_notexture***", data, 16, 16, it_wall, 32);
+}
+
 // q_shared.c (compiled into the renderer) calls Com_Printf; forward it to
 // the engine's console via the import table.
 void Com_Printf (char *fmt, ...)
@@ -32,13 +51,20 @@ void Com_Printf (char *fmt, ...)
 }
 
 // ------------------------------------------------------------------ registration
+// GL3_BeginRegistration / RegisterModel / RegisterSkin / EndRegistration live
+// in gl3_model.c. Pics come from the image manager.
 
-static void GL3_BeginRegistration (char *map)		{ }
-static struct model_s *GL3_RegisterModel (char *name)	{ return NULL; }
-static struct image_s *GL3_RegisterSkin (char *name)	{ return NULL; }
-static struct image_s *GL3_RegisterPic (char *name)	{ return NULL; }
-static void GL3_SetSky (char *name, float rotate, vec3_t axis) { }
-static void GL3_EndRegistration (void)				{ }
+refdef_t	r_newrefdef;
+
+static struct image_s *GL3_RegisterPic (char *name)
+{
+	return GL3_Draw_FindPic (name);
+}
+
+static void GL3_SetSky (char *name, float rotate, vec3_t axis)
+{
+	// skybox rendering comes in a later sub-stage
+}
 
 // ------------------------------------------------------------------ 2D drawing
 
@@ -49,9 +75,66 @@ static void GL3_CinematicSetPalette (const unsigned char *palette)
 
 // ------------------------------------------------------------------ frame
 
+// Build the view's model-view-projection from the refdef, matching the
+// original R_SetupGL orientation conversion.
+static void GL3_SetupWorldMatrix (float *mvp)
+{
+	float	proj[16], mv[16], tmp[16], r[16];
+	float	aspect = (float)r_newrefdef.width / (float)r_newrefdef.height;
+
+	GL3_MatPerspective (proj, r_newrefdef.fov_y, aspect, 4.0f, 4096.0f);
+
+	// modelview: convert Quake axes to GL, then inverse camera transform
+	GL3_MatIdentity (mv);
+	GL3_MatRotate (tmp, -90, 1, 0, 0);  GL3_MatMul (mv, mv, tmp);
+	GL3_MatRotate (tmp,  90, 0, 0, 1);  GL3_MatMul (mv, mv, tmp);
+	GL3_MatRotate (tmp, -r_newrefdef.viewangles[2], 1, 0, 0); GL3_MatMul (mv, mv, tmp);
+	GL3_MatRotate (tmp, -r_newrefdef.viewangles[0], 0, 1, 0); GL3_MatMul (mv, mv, tmp);
+	GL3_MatRotate (tmp, -r_newrefdef.viewangles[1], 0, 0, 1); GL3_MatMul (mv, mv, tmp);
+	GL3_MatTranslate (tmp, -r_newrefdef.vieworg[0], -r_newrefdef.vieworg[1], -r_newrefdef.vieworg[2]);
+	GL3_MatMul (mv, mv, tmp);
+
+	GL3_MatMul (mvp, proj, mv);
+	(void)r;
+}
+
 static void GL3_RenderFrame (refdef_t *fd)
 {
-	// world/entity rendering lands here in a later stage
+	float	mvp[16];
+
+	r_newrefdef = *fd;
+	r_framecount++;
+
+	if (!r_worldmodel && !(fd->rdflags & RDF_NOWORLDMODEL))
+		ri.Sys_Error (ERR_DROP, "GL3_RenderFrame: NULL worldmodel");
+
+	// viewport (GL y is bottom-up)
+	glViewport (r_newrefdef.x,
+		gl3state.height - (r_newrefdef.y + r_newrefdef.height),
+		r_newrefdef.width, r_newrefdef.height);
+
+	glEnable (GL_DEPTH_TEST);
+	glDepthFunc (GL_LEQUAL);
+	glEnable (GL_CULL_FACE);
+	glCullFace (GL_FRONT);			// Quake winding
+	glDisable (GL_BLEND);
+
+	GL3_SetupWorldMatrix (mvp);
+
+	glUseProgram (gl3_prog3d.program);
+	glUniformMatrix4fv (gl3_prog3d.u_mvp, 1, GL_FALSE, mvp);
+	glUniform1f (gl3_prog3d.u_gamma, vid_gamma->value < 0.5f ? 0.5f : vid_gamma->value);
+	glUniform1f (gl3_prog3d.u_intensity, gl_intensity->value);
+	glUniform1i (gl3_prog3d.u_lm_enabled, 0);	// diffuse-only for now
+	glActiveTexture (GL_TEXTURE0);
+
+	GL3_MarkLeaves ();
+	GL3_DrawWorld ();
+
+	// restore 2D state for the HUD/console the client draws next
+	glDisable (GL_DEPTH_TEST);
+	glDisable (GL_CULL_FACE);
+	GL3_Draw_SetOrtho ();
 }
 
 static void GL3_BeginFrame (float camera_separation)
@@ -62,7 +145,7 @@ static void GL3_BeginFrame (float camera_separation)
 	glClearColor (0.0f, 0.0f, 0.0f, 1.0f);
 	glClear (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	// prepare for the frame's 2D drawing (HUD/console/menu draw after RenderFrame)
+	// prepare for 2D drawing (menu/console when no 3D view is rendered)
 	GL3_Draw_SetOrtho ();
 }
 
@@ -97,10 +180,13 @@ static int GL3_Init (void *hinstance, void *wndproc)
 	}
 
 	GL3_InitImages ();
+	GL3_CreateNoTexture ();
 	GL3_InitShaders ();
 	GL3_Draw_Init ();
+	GL3_Mod_Init ();
 
 	ri.Cmd_AddCommand ("imagelist", GL3_ImageList_f);
+	ri.Cmd_AddCommand ("modellist", GL3_Mod_Modellist_f);
 	ri.Cmd_AddCommand ("screenshot", GL3_ScreenShot_f);
 
 	ri.Con_Printf (PRINT_ALL, "----------------------------------------\n");
@@ -110,6 +196,9 @@ static int GL3_Init (void *hinstance, void *wndproc)
 static void GL3_Shutdown (void)
 {
 	ri.Cmd_RemoveCommand ("imagelist");
+	ri.Cmd_RemoveCommand ("modellist");
+	ri.Cmd_RemoveCommand ("screenshot");
+	GL3_Mod_FreeAll ();
 	GL3_Draw_Shutdown ();
 	GL3_ShutdownShaders ();
 	GL3_ShutdownImages ();

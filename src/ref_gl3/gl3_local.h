@@ -49,6 +49,7 @@ extern unsigned		d_8to24table[256];	// palette as RGBA
 extern image_t		gl3textures[MAX_GLTEXTURES];
 extern int			numgl3textures;
 extern int			registration_sequence;
+extern image_t		*r_notexture;		// fallback checkerboard
 
 // gl3_image.c -- Quake 2 asset loading (PCX/TGA/WAL) and GL texture upload
 void     GL3_InitImages (void);
@@ -69,6 +70,18 @@ typedef struct
 } gl3prog2d_t;
 
 extern gl3prog2d_t	gl3_prog2d;
+
+// 3D world program
+typedef struct
+{
+	GLuint	program;
+	GLint	u_mvp;			// mat4
+	GLint	u_gamma;
+	GLint	u_intensity;
+	GLint	u_lm_enabled;	// int (0/1)
+} gl3prog3d_t;
+
+extern gl3prog3d_t	gl3_prog3d;
 
 void GL3_InitShaders (void);
 void GL3_ShutdownShaders (void);
@@ -101,5 +114,31 @@ void     GL3_ShutdownWindow (void);
 void     GL3_StartFrame (void);		// make context current
 void     GL3_SwapBuffers (void);
 qboolean GL3_SetMode (int mode, qboolean fullscreen);
+
+// ------------------------------------------------------------------ 3D / world
+
+#include "gl3_model.h"
+
+extern refdef_t	r_newrefdef;			// current view being rendered
+extern int		r_framecount;
+extern int		r_visframecount;
+extern int		c_brush_polys;
+
+// 4x4 column-major matrix helpers (gl3_math.c)
+void GL3_MatIdentity (float *m);
+void GL3_MatMul (float *out, const float *a, const float *b);	// out = a*b
+void GL3_MatPerspective (float *m, float fovy_deg, float aspect, float znear, float zfar);
+void GL3_MatRotate (float *m, float deg, float x, float y, float z);
+void GL3_MatTranslate (float *m, float x, float y, float z);
+
+// lightmap / surface building, called by the model loader (gl3_surf.c)
+void GL3_BeginBuildingLightmaps (model_t *m);
+void GL3_CreateSurfaceLightmap (msurface_t *surf);
+void GL3_EndBuildingLightmaps (void);
+
+// world rendering (gl3_surf.c)
+void GL3_BuildWorldVBO (void);			// upload all world polys after registration
+void GL3_DrawWorld (void);				// draw the visible world this frame
+void GL3_MarkLeaves (void);
 
 #endif // GL3_LOCAL_H

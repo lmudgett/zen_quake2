@@ -33,6 +33,7 @@ GLuint GL3_CompileProgram (const char *vtx, const char *frag)
 	// fixed attribute locations shared by all our vertex formats
 	glBindAttribLocation (prog, 0, "a_pos");
 	glBindAttribLocation (prog, 1, "a_uv");
+	glBindAttribLocation (prog, 2, "a_lmuv");
 	glLinkProgram (prog);
 	glGetProgramiv (prog, GL_LINK_STATUS, &ok);
 	if (!ok)
@@ -72,6 +73,42 @@ static const char *frag2d =
 	"    frag = c;\n"
 	"}\n";
 
+// ---- 3D world (diffuse * lightmap) ----
+static const char *vtx3d =
+	"#version 330 core\n"
+	"in vec3 a_pos;\n"
+	"in vec2 a_uv;\n"
+	"in vec2 a_lmuv;\n"
+	"uniform mat4 u_mvp;\n"
+	"out vec2 v_uv;\n"
+	"out vec2 v_lmuv;\n"
+	"void main() {\n"
+	"    v_uv = a_uv;\n"
+	"    v_lmuv = a_lmuv;\n"
+	"    gl_Position = u_mvp * vec4(a_pos, 1.0);\n"
+	"}\n";
+
+static const char *frag3d =
+	"#version 330 core\n"
+	"in vec2 v_uv;\n"
+	"in vec2 v_lmuv;\n"
+	"uniform sampler2D u_tex;\n"
+	"uniform sampler2D u_lightmap;\n"
+	"uniform int u_lm_enabled;\n"
+	"uniform float u_gamma;\n"
+	"uniform float u_intensity;\n"
+	"out vec4 frag;\n"
+	"void main() {\n"
+	"    vec4 diff = texture(u_tex, v_uv);\n"
+	"    vec3 c = diff.rgb * u_intensity;\n"
+	"    if (u_lm_enabled != 0)\n"
+	"        c *= texture(u_lightmap, v_lmuv).rgb * 2.0;\n"	// overbright
+	"    c = pow(c, vec3(1.0 / u_gamma));\n"
+	"    frag = vec4(c, diff.a);\n"
+	"}\n";
+
+gl3prog3d_t	gl3_prog3d;
+
 void GL3_InitShaders (void)
 {
 	gl3_prog2d.program = GL3_CompileProgram (vtx2d, frag2d);
@@ -82,11 +119,23 @@ void GL3_InitShaders (void)
 
 	glUseProgram (gl3_prog2d.program);
 	glUniform1i (glGetUniformLocation (gl3_prog2d.program, "u_tex"), 0);	// sampler on unit 0
+
+	gl3_prog3d.program = GL3_CompileProgram (vtx3d, frag3d);
+	gl3_prog3d.u_mvp = glGetUniformLocation (gl3_prog3d.program, "u_mvp");
+	gl3_prog3d.u_gamma = glGetUniformLocation (gl3_prog3d.program, "u_gamma");
+	gl3_prog3d.u_intensity = glGetUniformLocation (gl3_prog3d.program, "u_intensity");
+	gl3_prog3d.u_lm_enabled = glGetUniformLocation (gl3_prog3d.program, "u_lm_enabled");
+	glUseProgram (gl3_prog3d.program);
+	glUniform1i (glGetUniformLocation (gl3_prog3d.program, "u_tex"), 0);		// diffuse on unit 0
+	glUniform1i (glGetUniformLocation (gl3_prog3d.program, "u_lightmap"), 1);	// lightmap on unit 1
 }
 
 void GL3_ShutdownShaders (void)
 {
 	if (gl3_prog2d.program)
 		glDeleteProgram (gl3_prog2d.program);
+	if (gl3_prog3d.program)
+		glDeleteProgram (gl3_prog3d.program);
 	memset (&gl3_prog2d, 0, sizeof(gl3_prog2d));
+	memset (&gl3_prog3d, 0, sizeof(gl3_prog3d));
 }
