@@ -143,6 +143,38 @@ static const char *fragAlias =
 
 gl3progalias_t	gl3_prog_alias;
 
+// ---- water / turb surfaces: raw texcoords warped per-fragment by sin(time) ----
+static const char *vtxWarp =
+	"#version 330 core\n"
+	"in vec3 a_pos;\n"
+	"in vec2 a_uv;\n"				// RAW (undivided) surface texcoords
+	"uniform mat4 u_mvp;\n"
+	"out vec2 v_uv;\n"
+	"void main() {\n"
+	"    v_uv = a_uv;\n"
+	"    gl_Position = u_mvp * vec4(a_pos, 1.0);\n"
+	"}\n";
+
+static const char *fragWarp =
+	"#version 330 core\n"
+	"in vec2 v_uv;\n"
+	"uniform sampler2D u_tex;\n"
+	"uniform float u_time;\n"
+	"uniform float u_gamma;\n"
+	"uniform float u_intensity;\n"
+	"out vec4 frag;\n"
+	"void main() {\n"
+	"    vec2 w;\n"
+	"    w.x = v_uv.x + sin(v_uv.y * 0.125 + u_time) * 8.0;\n"
+	"    w.y = v_uv.y + sin(v_uv.x * 0.125 + u_time) * 8.0;\n"
+	"    w /= 64.0;\n"
+	"    vec4 t = texture(u_tex, w);\n"
+	"    vec3 c = pow(t.rgb * u_intensity, vec3(1.0 / u_gamma));\n"
+	"    frag = vec4(c, t.a);\n"
+	"}\n";
+
+gl3progwarp_t	gl3_prog_warp;
+
 // ---- particles (round point sprites, size scaled by distance) ----
 static const char *vtxPart =
 	"#version 330 core\n"
@@ -204,6 +236,14 @@ void GL3_InitShaders (void)
 	gl3_prog_part.u_mvp = glGetUniformLocation (gl3_prog_part.program, "u_mvp");
 	gl3_prog_part.u_gamma = glGetUniformLocation (gl3_prog_part.program, "u_gamma");
 	gl3_prog_part.u_psize = glGetUniformLocation (gl3_prog_part.program, "u_psize");
+
+	gl3_prog_warp.program = GL3_CompileProgram (vtxWarp, fragWarp);
+	gl3_prog_warp.u_mvp = glGetUniformLocation (gl3_prog_warp.program, "u_mvp");
+	gl3_prog_warp.u_time = glGetUniformLocation (gl3_prog_warp.program, "u_time");
+	gl3_prog_warp.u_gamma = glGetUniformLocation (gl3_prog_warp.program, "u_gamma");
+	gl3_prog_warp.u_intensity = glGetUniformLocation (gl3_prog_warp.program, "u_intensity");
+	glUseProgram (gl3_prog_warp.program);
+	glUniform1i (glGetUniformLocation (gl3_prog_warp.program, "u_tex"), 0);
 }
 
 void GL3_ShutdownShaders (void)
@@ -216,8 +256,11 @@ void GL3_ShutdownShaders (void)
 		glDeleteProgram (gl3_prog_alias.program);
 	if (gl3_prog_part.program)
 		glDeleteProgram (gl3_prog_part.program);
+	if (gl3_prog_warp.program)
+		glDeleteProgram (gl3_prog_warp.program);
 	memset (&gl3_prog2d, 0, sizeof(gl3_prog2d));
 	memset (&gl3_prog3d, 0, sizeof(gl3_prog3d));
 	memset (&gl3_prog_alias, 0, sizeof(gl3_prog_alias));
 	memset (&gl3_prog_part, 0, sizeof(gl3_prog_part));
+	memset (&gl3_prog_warp, 0, sizeof(gl3_prog_warp));
 }

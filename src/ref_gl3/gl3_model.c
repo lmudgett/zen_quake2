@@ -1173,10 +1173,15 @@ void GL3_BuildPolygonFromSurface (msurface_t *fa)
 			vec = loadmodel->vertexes[r_pedge->v[1]].position;
 		}
 		s = DotProduct (vec, fa->texinfo->vecs[0]) + fa->texinfo->vecs[0][3];
-		s /= fa->texinfo->image->width;
-
 		t = DotProduct (vec, fa->texinfo->vecs[1]) + fa->texinfo->vecs[1][3];
-		t /= fa->texinfo->image->height;
+
+		// turb (water) surfaces keep RAW texcoords -- the warp shader divides
+		// by 64 and adds the sin distortion at draw time
+		if (!(fa->flags & SURF_DRAWTURB))
+		{
+			s /= fa->texinfo->image->width;
+			t /= fa->texinfo->image->height;
+		}
 
 		VectorAdd (total, vec, total);
 		VectorCopy (vec, poly->verts[i]);

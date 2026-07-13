@@ -312,8 +312,8 @@ void GL3_DrawWorld (void)
 		glpoly_t *p;
 		int		lit;
 
-		if (surf->flags & SURF_DRAWSKY)
-			continue;			// sky handled separately
+		if (surf->flags & (SURF_DRAWSKY | SURF_DRAWTURB))
+			continue;			// sky and water drawn in their own passes
 		if (surf->texinfo && (surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66)))
 			continue;			// translucent surfaces drawn in a later pass
 
@@ -348,6 +348,49 @@ void GL3_DrawWorld (void)
 
 /*
 =================
+GL3_DrawWater
+
+Turb (water/lava/slime) surfaces: raw texcoords warped per-fragment by the
+warp shader. Opaque unless the texinfo is also flagged translucent.
+=================
+*/
+void GL3_DrawWater (const float *viewproj, float time)
+{
+	int			i;
+	msurface_t	*surf;
+
+	if (!r_worldmodel || !world_vao)
+		return;
+
+	glUseProgram (gl3_prog_warp.program);
+	glUniformMatrix4fv (gl3_prog_warp.u_mvp, 1, GL_FALSE, viewproj);
+	glUniform1f (gl3_prog_warp.u_time, time);
+	glUniform1f (gl3_prog_warp.u_gamma, vid_gamma->value < 0.5f ? 0.5f : vid_gamma->value);
+	glUniform1f (gl3_prog_warp.u_intensity, gl_intensity ? gl_intensity->value : 1.0f);
+	glActiveTexture (GL_TEXTURE0);
+	glBindVertexArray (world_vao);
+
+	surf = r_worldmodel->surfaces;
+	for (i = 0; i < r_worldmodel->numsurfaces; i++, surf++)
+	{
+		image_t		*img;
+		glpoly_t	*p;
+
+		if (!(surf->flags & SURF_DRAWTURB))
+			continue;
+
+		img = surf->texinfo ? surf->texinfo->image : NULL;
+		if (!img)
+			img = r_notexture;
+		GL3_Bind (img->texnum);
+
+		for (p = surf->polys; p; p = p->next)
+			glDrawArrays (GL_TRIANGLE_FAN, p->vbo_firstvert, p->numverts);
+	}
+}
+
+/*
+=================
 GL3_DrawWorldTranslucent
 
 Second pass: TRANS33/TRANS66 surfaces (glass, force fields, some water)
@@ -377,6 +420,8 @@ void GL3_DrawWorldTranslucent (void)
 
 		if (!surf->texinfo || !(surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66)))
 			continue;
+		if (surf->flags & SURF_DRAWTURB)
+			continue;			// translucent water handled by the water pass
 
 		glUniform1f (gl3_prog3d.u_alpha,
 			(surf->texinfo->flags & SURF_TRANS33) ? 0.33f : 0.66f);

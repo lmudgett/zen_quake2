@@ -84,6 +84,17 @@ typedef struct
 
 extern gl3prog3d_t	gl3_prog3d;
 
+// water/turb warp program (per-fragment sin distortion)
+typedef struct
+{
+	GLuint	program;
+	GLint	u_mvp;
+	GLint	u_time;
+	GLint	u_gamma;
+	GLint	u_intensity;
+} gl3progwarp_t;
+extern gl3progwarp_t	gl3_prog_warp;
+
 void GL3_InitShaders (void);
 void GL3_ShutdownShaders (void);
 GLuint GL3_CompileProgram (const char *vtx, const char *frag);
@@ -142,6 +153,7 @@ void GL3_EndBuildingLightmaps (void);
 void GL3_BuildWorldVBO (void);			// upload all world polys after registration
 void GL3_DrawWorld (void);				// draw the visible world this frame
 void GL3_DrawWorldTranslucent (void);	// TRANS33/66 surfaces, blended pass
+void GL3_DrawWater (const float *viewproj, float time);	// turb/warp surfaces
 void GL3_DrawBrushModel (entity_t *e, const float *viewproj);	// inline bmodels (doors/plats)
 void GL3_MarkLeaves (void);
 
