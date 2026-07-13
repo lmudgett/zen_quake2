@@ -166,12 +166,14 @@ typedef struct
 	GLint	u_mvp;
 	GLint	u_gamma;
 	GLint	u_intensity;
+	GLint	u_alphacut;		// fragment discard threshold (alpha-test replacement)
 } gl3progalias_t;
 extern gl3progalias_t	gl3_prog_alias;
 
 void GL3_InitMesh (void);				// create VAO/VBO
 void GL3_ShutdownMesh (void);
 void GL3_DrawAliasModel (entity_t *e, const float *viewproj);
+void GL3_DrawSpriteModel (entity_t *e, const float *viewproj);	// SP2 billboards
 
 // particles (gl3_particles.c)
 typedef struct

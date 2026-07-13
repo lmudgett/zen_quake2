@@ -98,6 +98,29 @@ static void GL3_SetupWorldMatrix (float *mvp)
 	(void)r;
 }
 
+static void GL3_DrawEntity (entity_t *e)
+{
+	if (e->flags & RF_BEAM)
+		return;				// beams drawn later
+	if (!e->model)
+		return;				// null-model boxes later
+
+	switch (e->model->type)
+	{
+	case mod_alias:
+		GL3_DrawAliasModel (e, gl3_viewproj);
+		break;
+	case mod_brush:
+		GL3_DrawBrushModel (e, gl3_viewproj);
+		break;
+	case mod_sprite:
+		GL3_DrawSpriteModel (e, gl3_viewproj);
+		break;
+	default:
+		break;
+	}
+}
+
 static void GL3_DrawEntities (void)
 {
 	int	i;
@@ -105,28 +128,23 @@ static void GL3_DrawEntities (void)
 	if (!r_drawentities || !r_drawentities->value)
 		return;
 
+	// solid entities first, then translucent ones without depth writes
+	// (matches R_DrawEntitiesOnList)
 	for (i = 0; i < r_newrefdef.num_entities; i++)
 	{
 		entity_t	*e = &r_newrefdef.entities[i];
-
-		if (e->flags & RF_BEAM)
-			continue;			// beams drawn later
-		if (!e->model)
-			continue;			// null-model boxes later
-
-		switch (e->model->type)
-		{
-		case mod_alias:
-			GL3_DrawAliasModel (e, gl3_viewproj);
-			break;
-		case mod_brush:
-			GL3_DrawBrushModel (e, gl3_viewproj);
-			break;
-		case mod_sprite:
-		default:
-			break;				// sprites in a later sub-stage
-		}
+		if (!(e->flags & RF_TRANSLUCENT))
+			GL3_DrawEntity (e);
 	}
+
+	glDepthMask (GL_FALSE);
+	for (i = 0; i < r_newrefdef.num_entities; i++)
+	{
+		entity_t	*e = &r_newrefdef.entities[i];
+		if (e->flags & RF_TRANSLUCENT)
+			GL3_DrawEntity (e);
+	}
+	glDepthMask (GL_TRUE);
 }
 
 static void GL3_RenderFrame (refdef_t *fd)

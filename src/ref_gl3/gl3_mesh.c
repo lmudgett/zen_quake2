@@ -342,7 +342,8 @@ void R_LightPoint (vec3_t p, vec3_t color)
 	r = RecursiveLightPoint (r_worldmodel->nodes, p, end);
 
 	if (r == -1)
-		color[0] = color[1] = color[2] = 1.0f;	// no hit -> fully lit
+		VectorCopy (vec3_origin, color);	// no hit -> black (id behaviour;
+											// keeps flyby ships as silhouettes)
 	else
 		VectorCopy (pointcolor, color);
 
@@ -674,4 +675,95 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 
 	if (e->flags & RF_TRANSLUCENT)
 		glDisable (GL_BLEND);
+}
+
+/*
+=================
+GL3_DrawSpriteModel
+
+SP2 sprites are camera-facing quads in world space, offset by the frame's
+raster origin (matches R_DrawSpriteModel). Opaque sprites use the classic
+alpha-test cutoff (0.666, via shader discard); translucent ones blend.
+=================
+*/
+void GL3_DrawSpriteModel (entity_t *e, const float *viewproj)
+{
+	dsprite_t		*psprite = (dsprite_t *)e->model->extradata;
+	dsprframe_t		*frame;
+	image_t			*skin;
+	vec3_t			vpn, vright, vup;
+	float			alpha = 1.0f;
+	int				framenum, i;
+	gl3_meshvert_t	v[4];
+	static const float corner_st[4][2] = { {0, 1}, {0, 0}, {1, 0}, {1, 1} };
+
+	framenum = e->frame % psprite->numframes;
+	frame = &psprite->frames[framenum];
+
+	skin = e->model->skins[framenum];
+	if (!skin)
+		skin = r_notexture;
+
+	if (e->flags & RF_TRANSLUCENT)
+		alpha = e->alpha;
+
+	// billboard axes from the view angles
+	AngleVectors (r_newrefdef.viewangles, vpn, vright, vup);
+
+	// corners: (0,1) bottom-left, (0,0) top-left, (1,0) top-right, (1,1) bottom-right
+	VectorMA (e->origin, -frame->origin_y, vup, v[0].pos);
+	VectorMA (v[0].pos, -frame->origin_x, vright, v[0].pos);
+	VectorMA (e->origin, frame->height - frame->origin_y, vup, v[1].pos);
+	VectorMA (v[1].pos, -frame->origin_x, vright, v[1].pos);
+	VectorMA (e->origin, frame->height - frame->origin_y, vup, v[2].pos);
+	VectorMA (v[2].pos, frame->width - frame->origin_x, vright, v[2].pos);
+	VectorMA (e->origin, -frame->origin_y, vup, v[3].pos);
+	VectorMA (v[3].pos, frame->width - frame->origin_x, vright, v[3].pos);
+
+	for (i = 0; i < 4; i++)
+	{
+		v[i].st[0] = corner_st[i][0];
+		v[i].st[1] = corner_st[i][1];
+		v[i].color[0] = v[i].color[1] = v[i].color[2] = 1.0f;
+		v[i].color[3] = alpha;
+	}
+
+	// two triangles preserving the quad's order
+	s_numverts = 0;
+	GL3_EmitVert (&v[0]); GL3_EmitVert (&v[1]); GL3_EmitVert (&v[2]);
+	GL3_EmitVert (&v[0]); GL3_EmitVert (&v[2]); GL3_EmitVert (&v[3]);
+
+	GL3_Bind (skin->texnum);
+
+	glUseProgram (gl3_prog_alias.program);
+	glUniformMatrix4fv (gl3_prog_alias.u_mvp, 1, GL_FALSE, viewproj);	// verts are world-space
+	glUniform1f (gl3_prog_alias.u_gamma,
+		vid_gamma->value < 0.5f ? 0.5f : vid_gamma->value);
+	glUniform1f (gl3_prog_alias.u_intensity, gl_intensity->value);
+
+	if (alpha < 1.0f)
+	{
+		glEnable (GL_BLEND);
+		glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	}
+	else
+	{
+		glUniform1f (gl3_prog_alias.u_alphacut, 0.666f);
+	}
+
+	glDisable (GL_CULL_FACE);		// billboards have no meaningful backface
+
+	glBindVertexArray (mesh_vao);
+	glBindBuffer (GL_ARRAY_BUFFER, mesh_vbo);
+	glBufferData (GL_ARRAY_BUFFER, s_numverts * sizeof(gl3_meshvert_t),
+		s_meshverts, GL_STREAM_DRAW);
+	glDrawArrays (GL_TRIANGLES, 0, s_numverts);
+	glBindVertexArray (0);
+	glBindBuffer (GL_ARRAY_BUFFER, 0);
+
+	glEnable (GL_CULL_FACE);
+	if (alpha < 1.0f)
+		glDisable (GL_BLEND);
+	else
+		glUniform1f (gl3_prog_alias.u_alphacut, 0.0f);
 }

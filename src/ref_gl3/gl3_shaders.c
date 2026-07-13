@@ -133,9 +133,11 @@ static const char *fragAlias =
 	"uniform sampler2D u_tex;\n"
 	"uniform float u_gamma;\n"
 	"uniform float u_intensity;\n"
+	"uniform float u_alphacut;\n"	// alpha-test replacement (0 = off); sprites use 0.666
 	"out vec4 frag;\n"
 	"void main() {\n"
 	"    vec4 t = texture(u_tex, v_uv);\n"
+	"    if (t.a * v_color.a < u_alphacut) discard;\n"
 	"    vec3 c = t.rgb * v_color.rgb * u_intensity;\n"
 	"    c = pow(c, vec3(1.0 / u_gamma));\n"
 	"    frag = vec4(c, t.a * v_color.a);\n"
@@ -229,7 +231,9 @@ void GL3_InitShaders (void)
 	gl3_prog_alias.u_mvp = glGetUniformLocation (gl3_prog_alias.program, "u_mvp");
 	gl3_prog_alias.u_gamma = glGetUniformLocation (gl3_prog_alias.program, "u_gamma");
 	gl3_prog_alias.u_intensity = glGetUniformLocation (gl3_prog_alias.program, "u_intensity");
+	gl3_prog_alias.u_alphacut = glGetUniformLocation (gl3_prog_alias.program, "u_alphacut");
 	glUseProgram (gl3_prog_alias.program);
+	glUniform1f (gl3_prog_alias.u_alphacut, 0.0f);
 	glUniform1i (glGetUniformLocation (gl3_prog_alias.program, "u_tex"), 0);
 
 	gl3_prog_part.program = GL3_CompileProgram (vtxPart, fragPart);
