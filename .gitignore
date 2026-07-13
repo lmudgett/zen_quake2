@@ -1,0 +1,20 @@
+# Build output
+build/
+
+# Original id Software source — reference only, its own git clone
+quake2/
+
+# Game assets (not redistributable)
+baseq2/*.pak
+baseq2/players/
+baseq2/video/
+ctf/*.pak
+
+# Editor/IDE
+.vs/
+.vscode/
+.idea/
+*.user
+
+# Misc
+*.log
