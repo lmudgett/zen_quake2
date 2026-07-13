@@ -1,7 +1,7 @@
 // net_sockets.c -- portable UDP networking: BSD sockets + WinSock2.
 // Replaces win32/net_wins.c and linux/net_udp.c. IPX is gone for good.
 
-#include "../qcommon/qcommon.h"
+#include "../common/qcommon.h"
 
 #ifdef _WIN32
 

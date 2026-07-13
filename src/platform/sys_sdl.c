@@ -4,7 +4,7 @@
 
 #include <SDL3/SDL.h>
 
-#include "../qcommon/qcommon.h"
+#include "../common/qcommon.h"
 
 #include <errno.h>
 #include <stdio.h>

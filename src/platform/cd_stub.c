@@ -1,4 +1,4 @@
-#include "../qcommon/qcommon.h"
+#include "../common/qcommon.h"
 
 void CDAudio_Play(int track, qboolean looping)
 {

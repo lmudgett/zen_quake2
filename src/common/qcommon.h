@@ -603,7 +603,7 @@ CMODEL
 */
 
 
-#include "../qcommon/qfiles.h"
+#include "../common/qfiles.h"
 
 cmodel_t	*CM_LoadMap (char *name, qboolean clientload, unsigned *checksum);
 cmodel_t	*CM_InlineModel (char *name);	// *1, *2, etc

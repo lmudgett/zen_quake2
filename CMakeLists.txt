@@ -5,8 +5,8 @@ if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "This port is 64-bit only. Configure a 64-bit toolchain.")
 endif()
 
-set(CMAKE_C_STANDARD 17)
-set(CMAKE_C_STANDARD_REQUIRED ON)
+# C dialect is applied per-target via q2_common_flags (C23 / latest);
+# a global CMAKE_C_STANDARD would leak into fetched deps like SDL3.
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE RelWithDebInfo)
@@ -32,12 +32,20 @@ endif()
 # ---------------------------------------------------------------------------
 # Common compile options
 # ---------------------------------------------------------------------------
+include(CheckCCompilerFlag)
+
 add_library(q2_common_flags INTERFACE)
 if(MSVC)
     target_compile_definitions(q2_common_flags INTERFACE
         _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE C_ONLY)
-    target_compile_options(q2_common_flags INTERFACE /W3)
+    target_compile_options(q2_common_flags INTERFACE /std:clatest /W3)
 else()
+    check_c_compiler_flag(-std=gnu23 HAVE_STD_GNU23)
+    if(HAVE_STD_GNU23)
+        target_compile_options(q2_common_flags INTERFACE -std=gnu23)
+    else()
+        target_compile_options(q2_common_flags INTERFACE -std=gnu2x)
+    endif()
     target_compile_definitions(q2_common_flags INTERFACE C_ONLY)
     target_compile_options(q2_common_flags INTERFACE
         -fno-strict-aliasing -fwrapv
@@ -49,15 +57,15 @@ endif()
 # q2ded — dedicated server
 # ---------------------------------------------------------------------------
 set(QCOMMON_SOURCES
-    src/qcommon/cmd.c
-    src/qcommon/cmodel.c
-    src/qcommon/common.c
-    src/qcommon/crc.c
-    src/qcommon/cvar.c
-    src/qcommon/files.c
-    src/qcommon/md4.c
-    src/qcommon/net_chan.c
-    src/qcommon/pmove.c
+    src/common/cmd.c
+    src/common/cmodel.c
+    src/common/common.c
+    src/common/crc.c
+    src/common/cvar.c
+    src/common/files.c
+    src/common/md4.c
+    src/common/net_chan.c
+    src/common/pmove.c
     src/game/q_shared.c
 )
 
@@ -75,10 +83,10 @@ set(SERVER_SOURCES
 add_executable(q2ded
     ${QCOMMON_SOURCES}
     ${SERVER_SOURCES}
-    src/null/cl_null.c
-    src/null/cd_null.c
-    src/sdl/sys_sdl.c
-    src/sdl/net_sockets.c
+    src/platform/cl_stub.c
+    src/platform/cd_stub.c
+    src/platform/sys_sdl.c
+    src/platform/net_sockets.c
 )
 target_compile_definitions(q2ded PRIVATE DEDICATED_ONLY)
 target_include_directories(q2ded PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
