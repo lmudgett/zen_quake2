@@ -89,6 +89,14 @@ void GL3_Draw_SetOrtho (void)
 	glUseProgram (gl3_prog2d.program);
 	glUniformMatrix4fv (gl3_prog2d.u_ortho, 1, GL_FALSE, ortho);
 
+	// gamma / intensity (replaces the old hardware gamma ramp)
+	{
+		float gamma = vid_gamma ? vid_gamma->value : 1.0f;
+		if (gamma < 0.5f) gamma = 0.5f;
+		glUniform1f (gl3_prog2d.u_gamma, gamma);
+		glUniform1f (gl3_prog2d.u_intensity, gl_intensity ? gl_intensity->value : 1.0f);
+	}
+
 	glDisable (GL_DEPTH_TEST);
 	glDisable (GL_CULL_FACE);
 	glEnable (GL_BLEND);

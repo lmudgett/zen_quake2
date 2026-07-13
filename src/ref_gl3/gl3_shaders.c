@@ -63,9 +63,13 @@ static const char *frag2d =
 	"in vec2 v_uv;\n"
 	"uniform sampler2D u_tex;\n"
 	"uniform vec4 u_color;\n"
+	"uniform float u_gamma;\n"
+	"uniform float u_intensity;\n"
 	"out vec4 frag;\n"
 	"void main() {\n"
-	"    frag = texture(u_tex, v_uv) * u_color;\n"
+	"    vec4 c = texture(u_tex, v_uv) * u_color;\n"
+	"    c.rgb = pow(c.rgb * u_intensity, vec3(1.0 / u_gamma));\n"
+	"    frag = c;\n"
 	"}\n";
 
 void GL3_InitShaders (void)
@@ -73,6 +77,8 @@ void GL3_InitShaders (void)
 	gl3_prog2d.program = GL3_CompileProgram (vtx2d, frag2d);
 	gl3_prog2d.u_ortho = glGetUniformLocation (gl3_prog2d.program, "u_ortho");
 	gl3_prog2d.u_color = glGetUniformLocation (gl3_prog2d.program, "u_color");
+	gl3_prog2d.u_gamma = glGetUniformLocation (gl3_prog2d.program, "u_gamma");
+	gl3_prog2d.u_intensity = glGetUniformLocation (gl3_prog2d.program, "u_intensity");
 
 	glUseProgram (gl3_prog2d.program);
 	glUniform1i (glGetUniformLocation (gl3_prog2d.program, "u_tex"), 0);	// sampler on unit 0

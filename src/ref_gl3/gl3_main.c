@@ -11,6 +11,7 @@ cvar_t	*gl_mode;
 cvar_t	*vid_fullscreen;
 cvar_t	*vid_gamma;
 cvar_t	*gl_clear;
+cvar_t	*gl_intensity;
 
 void GL3_SetRawPalette (const unsigned char *palette);	// gl3_draw.c
 void GL3_ScreenShot_f (void);							// gl3_screenshot.c
@@ -85,6 +86,7 @@ static int GL3_Init (void *hinstance, void *wndproc)
 	vid_fullscreen = ri.Cvar_Get ("vid_fullscreen", "0", CVAR_ARCHIVE);
 	vid_gamma = ri.Cvar_Get ("vid_gamma", "1", CVAR_ARCHIVE);
 	gl_clear = ri.Cvar_Get ("gl_clear", "0", 0);
+	gl_intensity = ri.Cvar_Get ("intensity", "2", CVAR_ARCHIVE);
 
 	Swap_Init ();	// the renderer has its own copy of q_shared's byte-swap pointers
 

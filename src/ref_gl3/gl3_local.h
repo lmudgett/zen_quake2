@@ -64,6 +64,8 @@ typedef struct
 	GLuint	program;
 	GLint	u_ortho;		// mat4 for 2D
 	GLint	u_color;		// vec4 tint
+	GLint	u_gamma;		// float
+	GLint	u_intensity;	// float
 } gl3prog2d_t;
 
 extern gl3prog2d_t	gl3_prog2d;
@@ -92,6 +94,7 @@ extern cvar_t	*gl_mode;
 extern cvar_t	*vid_fullscreen;
 extern cvar_t	*vid_gamma;
 extern cvar_t	*gl_clear;
+extern cvar_t	*gl_intensity;
 
 // gl3_glimp.c -- window / context management
 void     GL3_ShutdownWindow (void);
