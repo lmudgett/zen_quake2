@@ -51,6 +51,14 @@ static void MakeSkyVec (float s, float t, int axis, const float *vieworg, float 
 	if (t < sky_min) t = sky_min; else if (t > sky_max) t = sky_max;
 	t = 1.0f - t;
 
+	// rotating skies (space maps) spin the whole box around skyaxis
+	if (skyrotate)
+	{
+		vec3_t	rotated;
+		RotatePointAroundVector (rotated, skyaxis, v, r_newrefdef.time * skyrotate);
+		VectorCopy (rotated, v);
+	}
+
 	// position (world space, offset so the box tracks the camera) + uv + lmuv(0,0)
 	out[0] = v[0] + vieworg[0];
 	out[1] = v[1] + vieworg[1];

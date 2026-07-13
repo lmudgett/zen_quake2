@@ -714,18 +714,35 @@ static void R_RecursiveWorldNode (mnode_t *node)
 
 // ------------------------------------------------------------------ draw
 
-static image_t *GL3_TextureAnimation (mtexinfo_t *tex)
+// step the animation chain by the entity's frame (world uses frame 0),
+// matching R_TextureAnimation
+static image_t *GL3_TextureAnimation (mtexinfo_t *tex, int frame)
 {
+	int	c;
+
 	if (!tex->next)
 		return tex->image;
-	// animated textures step by (int)(time*2); base frame is fine for a still
+
+	c = frame % tex->numframes;
+	while (c)
+	{
+		tex = tex->next;
+		c--;
+	}
 	return tex->image;
+}
+
+// SURF_FLOWING scroll for this frame: cycles 0..-64 over 40s (id semantics)
+static float GL3_FlowScroll (void)
+{
+	float	scroll = -64.0f * ((r_newrefdef.time / 40.0f) - (int)(r_newrefdef.time / 40.0f));
+	return scroll ? scroll : -64.0f;
 }
 
 void GL3_DrawWorld (void)
 {
 	int		i;
-	int		cur_lm = -1, cur_lm_enabled = -1;
+	int		cur_lm = -1, cur_lm_enabled = -1, cur_flowing = -1;
 	msurface_t	*surf;
 
 	if (!r_worldmodel || !world_vao)
@@ -753,9 +770,18 @@ void GL3_DrawWorld (void)
 		if (surf->texinfo && (surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66)))
 			continue;			// translucent surfaces drawn in a later pass
 
-		img = surf->texinfo ? GL3_TextureAnimation (surf->texinfo) : NULL;
+		img = surf->texinfo ? GL3_TextureAnimation (surf->texinfo, 0) : NULL;
 		if (!img)
 			img = r_notexture;
+
+		{	// conveyor-style scrolling textures
+			int flowing = surf->texinfo && (surf->texinfo->flags & SURF_FLOWING);
+			if (flowing != cur_flowing)
+			{
+				glUniform1f (gl3_prog3d.u_scroll, flowing ? GL3_FlowScroll () : 0.0f);
+				cur_flowing = flowing;
+			}
+		}
 
 		// lit surfaces sample their lightmap page on unit 1
 		lit = !(surf->flags & SURF_DRAWTURB) && surf->lightmaptexturenum > 0;
@@ -792,6 +818,9 @@ void GL3_DrawWorld (void)
 			c_brush_polys++;
 		}
 	}
+
+	if (cur_flowing == 1)
+		glUniform1f (gl3_prog3d.u_scroll, 0.0f);
 }
 
 /*
@@ -830,6 +859,9 @@ void GL3_DrawWater (const float *viewproj, float time)
 			continue;
 		if (surf->texinfo && (surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66)))
 			continue;			// translucent water: blended pass below
+
+		glUniform1f (gl3_prog_warp.u_scroll,
+			(surf->texinfo && (surf->texinfo->flags & SURF_FLOWING)) ? GL3_FlowScroll () : 0.0f);
 
 		img = surf->texinfo ? surf->texinfo->image : NULL;
 		if (!img)
@@ -881,7 +913,7 @@ void GL3_DrawWorldTranslucent (void)
 		glUniform1f (gl3_prog3d.u_alpha,
 			(surf->texinfo->flags & SURF_TRANS33) ? 0.33f : 0.66f);
 
-		img = GL3_TextureAnimation (surf->texinfo);
+		img = GL3_TextureAnimation (surf->texinfo, 0);
 		if (!img)
 			img = r_notexture;
 		GL3_Bind (img->texnum);
@@ -929,7 +961,7 @@ void GL3_DrawWorldTranslucent (void)
 }
 
 // draw a single world surface (diffuse + lightmap) -- used for inline bmodels
-static void GL3_DrawSurface (msurface_t *surf)
+static void GL3_DrawSurface (msurface_t *surf, int frame)
 {
 	image_t		*img;
 	glpoly_t	*p;
@@ -938,9 +970,12 @@ static void GL3_DrawSurface (msurface_t *surf)
 	if (surf->flags & (SURF_DRAWSKY | SURF_DRAWTURB))
 		return;			// turb surfaces get a warp-shader pass of their own
 
-	img = surf->texinfo ? GL3_TextureAnimation (surf->texinfo) : NULL;
+	img = surf->texinfo ? GL3_TextureAnimation (surf->texinfo, frame) : NULL;
 	if (!img)
 		img = r_notexture;
+
+	glUniform1f (gl3_prog3d.u_scroll,
+		(surf->texinfo && (surf->texinfo->flags & SURF_FLOWING)) ? GL3_FlowScroll () : 0.0f);
 
 	lit = surf->lightmaptexturenum > 0;
 	glUniform1i (gl3_prog3d.u_lm_enabled, lit);
@@ -1049,7 +1084,7 @@ void GL3_DrawBrushModel (entity_t *e, const float *viewproj)
 		if (surf->flags & SURF_DRAWTURB)
 			numturb++;
 		else
-			GL3_DrawSurface (surf);
+			GL3_DrawSurface (surf, e->frame);
 	}
 
 	// water brushes (func_water etc.) need the warp shader with this

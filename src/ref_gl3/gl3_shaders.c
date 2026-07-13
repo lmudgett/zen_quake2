@@ -82,10 +82,11 @@ static const char *vtx3d =
 	"in vec2 a_uv;\n"
 	"in vec2 a_lmuv;\n"
 	"uniform mat4 u_mvp;\n"
+	"uniform float u_scroll;\n"		// SURF_FLOWING
 	"out vec2 v_uv;\n"
 	"out vec2 v_lmuv;\n"
 	"void main() {\n"
-	"    v_uv = a_uv;\n"
+	"    v_uv = a_uv + vec2(u_scroll, 0.0);\n"
 	"    v_lmuv = a_lmuv;\n"
 	"    gl_Position = u_mvp * vec4(a_pos, 1.0);\n"
 	"}\n";
@@ -152,9 +153,10 @@ static const char *vtxWarp =
 	"in vec3 a_pos;\n"
 	"in vec2 a_uv;\n"				// RAW (undivided) surface texcoords
 	"uniform mat4 u_mvp;\n"
+	"uniform float u_scroll;\n"		// SURF_FLOWING, raw units
 	"out vec2 v_uv;\n"
 	"void main() {\n"
-	"    v_uv = a_uv;\n"
+	"    v_uv = a_uv + vec2(u_scroll * 64.0, 0.0);\n"
 	"    gl_Position = u_mvp * vec4(a_pos, 1.0);\n"
 	"}\n";
 
@@ -225,8 +227,10 @@ void GL3_InitShaders (void)
 	gl3_prog3d.u_intensity = glGetUniformLocation (gl3_prog3d.program, "u_intensity");
 	gl3_prog3d.u_lm_enabled = glGetUniformLocation (gl3_prog3d.program, "u_lm_enabled");
 	gl3_prog3d.u_alpha = glGetUniformLocation (gl3_prog3d.program, "u_alpha");
+	gl3_prog3d.u_scroll = glGetUniformLocation (gl3_prog3d.program, "u_scroll");
 	glUseProgram (gl3_prog3d.program);
 	glUniform1f (gl3_prog3d.u_alpha, 1.0f);
+	glUniform1f (gl3_prog3d.u_scroll, 0.0f);
 	glUniform1i (glGetUniformLocation (gl3_prog3d.program, "u_tex"), 0);		// diffuse on unit 0
 	glUniform1i (glGetUniformLocation (gl3_prog3d.program, "u_lightmap"), 1);	// lightmap on unit 1
 
@@ -250,8 +254,10 @@ void GL3_InitShaders (void)
 	gl3_prog_warp.u_gamma = glGetUniformLocation (gl3_prog_warp.program, "u_gamma");
 	gl3_prog_warp.u_intensity = glGetUniformLocation (gl3_prog_warp.program, "u_intensity");
 	gl3_prog_warp.u_alpha = glGetUniformLocation (gl3_prog_warp.program, "u_alpha");
+	gl3_prog_warp.u_scroll = glGetUniformLocation (gl3_prog_warp.program, "u_scroll");
 	glUseProgram (gl3_prog_warp.program);
 	glUniform1f (gl3_prog_warp.u_alpha, 1.0f);
+	glUniform1f (gl3_prog_warp.u_scroll, 0.0f);
 	glUniform1i (glGetUniformLocation (gl3_prog_warp.program, "u_tex"), 0);
 }
 

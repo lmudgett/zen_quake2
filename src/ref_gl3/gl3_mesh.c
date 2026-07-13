@@ -426,9 +426,13 @@ static void GL3_EmitVert (const gl3_meshvert_t *v)
 // GL3_DrawAliasModel
 //===================================================================
 
-// interpolate the two poses into s_lerped[] (adapted from GL_LerpVerts /
-// GL_DrawAliasFrameLerp; shell/powersuit cases are omitted for now)
-static void GL3_LerpAliasFrame (entity_t *e, dmdl_t *paliashdr, float backlerp)
+#ifndef POWERSUIT_SCALE
+#define POWERSUIT_SCALE	4.0f
+#endif
+
+// interpolate the two poses into s_lerped[]; shellscale extrudes the mesh
+// along the vertex normals for RF_SHELL_* passes (GL_LerpVerts)
+static void GL3_LerpAliasFrame (entity_t *e, dmdl_t *paliashdr, float backlerp, float shellscale)
 {
 	daliasframe_t	*frame, *oldframe;
 	dtrivertx_t		*v, *ov;
@@ -471,6 +475,13 @@ static void GL3_LerpAliasFrame (entity_t *e, dmdl_t *paliashdr, float backlerp)
 		s_lerped[i][0] = move[0] + ov->v[0] * backv[0] + v->v[0] * frontv[0];
 		s_lerped[i][1] = move[1] + ov->v[1] * backv[1] + v->v[1] * frontv[1];
 		s_lerped[i][2] = move[2] + ov->v[2] * backv[2] + v->v[2] * frontv[2];
+		if (shellscale)
+		{
+			float	*n = r_avertexnormals[v->lightnormalindex];
+			s_lerped[i][0] += n[0] * shellscale;
+			s_lerped[i][1] += n[1] * shellscale;
+			s_lerped[i][2] += n[2] * shellscale;
+		}
 	}
 }
 
@@ -504,17 +515,56 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 		e->oldframe = 0;
 	}
 
+	int	shell = e->flags & (RF_SHELL_RED | RF_SHELL_GREEN | RF_SHELL_BLUE
+			| RF_SHELL_DOUBLE | RF_SHELL_HALF_DAM);
+
 	//
 	// lighting
 	//
-	// TODO: handle RF_MINLIGHT, RF_GLOW, shells (RF_SHELL_*) and dynamic lights
-	if (e->flags & RF_FULLBRIGHT)
+	if (shell)
+	{
+		// flat shell colors (R_DrawAliasModel)
+		VectorClear (shadelight);
+		if (e->flags & RF_SHELL_RED)	shadelight[0] = 1.0f;
+		if (e->flags & RF_SHELL_GREEN)	shadelight[1] = 1.0f;
+		if (e->flags & RF_SHELL_BLUE)	shadelight[2] = 1.0f;
+		if (e->flags & RF_SHELL_DOUBLE)
+		{
+			shadelight[0] = 0.9f; shadelight[1] = 0.7f;
+		}
+		if (e->flags & RF_SHELL_HALF_DAM)
+		{
+			shadelight[0] = 0.56f; shadelight[1] = 0.59f; shadelight[2] = 0.45f;
+		}
+	}
+	else if (e->flags & RF_FULLBRIGHT)
 	{
 		shadelight[0] = shadelight[1] = shadelight[2] = 1.0f;
 	}
 	else
 	{
 		R_LightPoint (e->origin, shadelight);
+
+		if (e->flags & RF_MINLIGHT)
+		{	// keep pickups visible in the dark
+			for (i = 0; i < 3; i++)
+				if (shadelight[i] > 0.1f)
+					break;
+			if (i == 3)
+				shadelight[0] = shadelight[1] = shadelight[2] = 0.1f;
+		}
+	}
+
+	if (e->flags & RF_GLOW)
+	{	// bonus items pulse
+		float	scale = 0.1f * (float)sin (r_newrefdef.time * 7);
+		for (i = 0; i < 3; i++)
+		{
+			float	min = shadelight[i] * 0.8f;
+			shadelight[i] += scale;
+			if (shadelight[i] < min)
+				shadelight[i] = min;
+		}
 	}
 
 	shadedots = r_avertexnormal_dots[
@@ -541,14 +591,16 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 	//
 	// interpolate vertices
 	//
-	GL3_LerpAliasFrame (e, paliashdr, e->backlerp);
+	GL3_LerpAliasFrame (e, paliashdr, e->backlerp, shell ? POWERSUIT_SCALE : 0.0f);
 
 	// current-frame verts supply the lighting normal indices
 	frame = (daliasframe_t *)((byte *)paliashdr + paliashdr->ofs_frames
 		+ e->frame * paliashdr->framesize);
 	verts = frame->verts;
 
-	if (e->flags & RF_TRANSLUCENT)
+	if (shell)
+		alpha = 0.30f;			// shells always blend at 0.30 (id)
+	else if (e->flags & RF_TRANSLUCENT)
 		alpha = e->alpha;
 	else
 		alpha = 1.0f;
@@ -588,7 +640,7 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 			float			s = ((float *)order)[0];
 			float			t = ((float *)order)[1];
 			int				index_xyz = order[2];
-			float			l = shadedots[verts[index_xyz].lightnormalindex];
+			float			l = shell ? 1.0f : shadedots[verts[index_xyz].lightnormalindex];
 
 			order += 3;
 
@@ -652,7 +704,10 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 	if (!skin)
 		skin = r_notexture;				// fallback
 
-	GL3_Bind (skin->texnum);
+	if (shell)
+		GL3_Bind (white_tex);			// untextured flat-colour shell
+	else
+		GL3_Bind (skin->texnum);
 
 	//
 	// draw
@@ -663,7 +718,7 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 		vid_gamma->value < 0.5f ? 0.5f : vid_gamma->value);
 	glUniform1f (gl3_prog_alias.u_intensity, gl_intensity->value);
 
-	if (e->flags & RF_TRANSLUCENT)
+	if (shell || (e->flags & RF_TRANSLUCENT))
 	{
 		glEnable (GL_BLEND);
 		glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -684,8 +739,87 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 	if (e->flags & RF_DEPTHHACK)
 		glDepthRange (0.0, 1.0);
 
-	if (e->flags & RF_TRANSLUCENT)
+	if (shell || (e->flags & RF_TRANSLUCENT))
 		glDisable (GL_BLEND);
+}
+
+/*
+=================
+GL3_DrawBeam
+
+RF_BEAM entities (grapple cable, lightning): a segmented cylinder from
+origin to old_origin, width = e->frame, palette colour = e->skinnum
+(R_DrawBeam).
+=================
+*/
+#define NUM_BEAM_SEGS 6
+
+void GL3_DrawBeam (entity_t *e, const float *viewproj)
+{
+	int		i, j;
+	vec3_t	perpvec, direction, normalized_direction;
+	vec3_t	start_points[NUM_BEAM_SEGS], end_points[NUM_BEAM_SEGS];
+	byte	*rgba;
+	gl3_meshvert_t	v;
+
+	VectorSubtract (e->oldorigin, e->origin, direction);
+	VectorCopy (direction, normalized_direction);
+	if (VectorNormalize (normalized_direction) == 0)
+		return;
+
+	PerpendicularVector (perpvec, normalized_direction);
+	VectorScale (perpvec, e->frame / 2, perpvec);
+
+	for (i = 0; i < NUM_BEAM_SEGS; i++)
+	{
+		RotatePointAroundVector (start_points[i], normalized_direction, perpvec,
+			(360.0f / NUM_BEAM_SEGS) * i);
+		VectorAdd (start_points[i], e->origin, start_points[i]);
+		VectorAdd (start_points[i], direction, end_points[i]);
+	}
+
+	rgba = (byte *)&d_8to24table[e->skinnum & 0xFF];
+	v.st[0] = v.st[1] = 0;
+	v.color[0] = rgba[0] / 255.0f;
+	v.color[1] = rgba[1] / 255.0f;
+	v.color[2] = rgba[2] / 255.0f;
+	v.color[3] = 0.30f;
+
+	s_numverts = 0;
+	for (i = 0; i < NUM_BEAM_SEGS; i++)
+	{	// quad between ring i and ring i+1, as two triangles
+		j = (i + 1) % NUM_BEAM_SEGS;
+		VectorCopy (start_points[i], v.pos); GL3_EmitVert (&v);
+		VectorCopy (end_points[i], v.pos);   GL3_EmitVert (&v);
+		VectorCopy (start_points[j], v.pos); GL3_EmitVert (&v);
+		VectorCopy (start_points[j], v.pos); GL3_EmitVert (&v);
+		VectorCopy (end_points[i], v.pos);   GL3_EmitVert (&v);
+		VectorCopy (end_points[j], v.pos);   GL3_EmitVert (&v);
+	}
+
+	glUseProgram (gl3_prog_alias.program);
+	glUniformMatrix4fv (gl3_prog_alias.u_mvp, 1, GL_FALSE, viewproj);	// world space
+	glUniform1f (gl3_prog_alias.u_gamma,
+		vid_gamma->value < 0.5f ? 0.5f : vid_gamma->value);
+	glUniform1f (gl3_prog_alias.u_intensity, 1.0f);
+
+	GL3_Bind (white_tex);
+	glEnable (GL_BLEND);
+	glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glDepthMask (GL_FALSE);
+	glDisable (GL_CULL_FACE);
+
+	glBindVertexArray (mesh_vao);
+	glBindBuffer (GL_ARRAY_BUFFER, mesh_vbo);
+	glBufferData (GL_ARRAY_BUFFER, s_numverts * sizeof(gl3_meshvert_t),
+		s_meshverts, GL_STREAM_DRAW);
+	glDrawArrays (GL_TRIANGLES, 0, s_numverts);
+	glBindVertexArray (0);
+	glBindBuffer (GL_ARRAY_BUFFER, 0);
+
+	glEnable (GL_CULL_FACE);
+	glDepthMask (GL_TRUE);
+	glDisable (GL_BLEND);
 }
 
 /*

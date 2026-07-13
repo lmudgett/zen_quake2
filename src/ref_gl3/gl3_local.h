@@ -71,6 +71,8 @@ typedef struct
 
 extern gl3prog2d_t	gl3_prog2d;
 
+extern GLuint	white_tex;	// 1x1 white (gl3_draw.c)
+
 // 3D world program
 typedef struct
 {
@@ -80,6 +82,7 @@ typedef struct
 	GLint	u_intensity;
 	GLint	u_lm_enabled;	// int (0/1)
 	GLint	u_alpha;		// float surface alpha (1 opaque)
+	GLint	u_scroll;		// SURF_FLOWING texture scroll
 } gl3prog3d_t;
 
 extern gl3prog3d_t	gl3_prog3d;
@@ -93,6 +96,7 @@ typedef struct
 	GLint	u_gamma;
 	GLint	u_intensity;
 	GLint	u_alpha;		// translucent water
+	GLint	u_scroll;		// SURF_FLOWING scroll (raw units)
 } gl3progwarp_t;
 extern gl3progwarp_t	gl3_prog_warp;
 
@@ -176,6 +180,7 @@ void GL3_InitMesh (void);				// create VAO/VBO
 void GL3_ShutdownMesh (void);
 void GL3_DrawAliasModel (entity_t *e, const float *viewproj);
 void GL3_DrawSpriteModel (entity_t *e, const float *viewproj);	// SP2 billboards
+void GL3_DrawBeam (entity_t *e, const float *viewproj);		// RF_BEAM cylinders
 
 // particles (gl3_particles.c)
 typedef struct

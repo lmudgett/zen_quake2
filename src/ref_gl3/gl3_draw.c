@@ -4,7 +4,7 @@
 #include "gl3_local.h"
 
 static GLuint	draw_vao, draw_vbo;
-static GLuint	white_tex;			// 1x1 opaque white, for solid fills
+GLuint	white_tex;					// 1x1 opaque white: fills, shells, beams
 static image_t	*draw_chars;		// console font (pics/conchars)
 
 static GLuint	raw_tex;			// cinematic upload target

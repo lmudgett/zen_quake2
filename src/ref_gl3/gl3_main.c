@@ -101,7 +101,10 @@ static void GL3_SetupWorldMatrix (float *mvp)
 static void GL3_DrawEntity (entity_t *e)
 {
 	if (e->flags & RF_BEAM)
-		return;				// beams drawn later
+	{
+		GL3_DrawBeam (e, gl3_viewproj);
+		return;
+	}
 	if (!e->model)
 		return;				// null-model boxes later
 
