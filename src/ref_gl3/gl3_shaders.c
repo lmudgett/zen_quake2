@@ -142,6 +142,34 @@ static const char *fragAlias =
 
 gl3progalias_t	gl3_prog_alias;
 
+// ---- particles (round point sprites, size scaled by distance) ----
+static const char *vtxPart =
+	"#version 330 core\n"
+	"in vec3 a_pos;\n"
+	"in vec4 a_color;\n"
+	"uniform mat4 u_mvp;\n"
+	"uniform float u_psize;\n"
+	"out vec4 v_color;\n"
+	"void main() {\n"
+	"    v_color = a_color;\n"
+	"    gl_Position = u_mvp * vec4(a_pos, 1.0);\n"
+	"    gl_PointSize = clamp(u_psize / gl_Position.w, 1.0, 64.0);\n"
+	"}\n";
+
+static const char *fragPart =
+	"#version 330 core\n"
+	"in vec4 v_color;\n"
+	"uniform float u_gamma;\n"
+	"out vec4 frag;\n"
+	"void main() {\n"
+	"    vec2 d = gl_PointCoord - vec2(0.5);\n"
+	"    if (dot(d, d) > 0.25) discard;\n"			// round particle
+	"    vec3 c = pow(v_color.rgb, vec3(1.0 / u_gamma));\n"
+	"    frag = vec4(c, v_color.a);\n"
+	"}\n";
+
+gl3progpart_t	gl3_prog_part;
+
 void GL3_InitShaders (void)
 {
 	gl3_prog2d.program = GL3_CompileProgram (vtx2d, frag2d);
@@ -168,6 +196,11 @@ void GL3_InitShaders (void)
 	gl3_prog_alias.u_intensity = glGetUniformLocation (gl3_prog_alias.program, "u_intensity");
 	glUseProgram (gl3_prog_alias.program);
 	glUniform1i (glGetUniformLocation (gl3_prog_alias.program, "u_tex"), 0);
+
+	gl3_prog_part.program = GL3_CompileProgram (vtxPart, fragPart);
+	gl3_prog_part.u_mvp = glGetUniformLocation (gl3_prog_part.program, "u_mvp");
+	gl3_prog_part.u_gamma = glGetUniformLocation (gl3_prog_part.program, "u_gamma");
+	gl3_prog_part.u_psize = glGetUniformLocation (gl3_prog_part.program, "u_psize");
 }
 
 void GL3_ShutdownShaders (void)
@@ -178,7 +211,10 @@ void GL3_ShutdownShaders (void)
 		glDeleteProgram (gl3_prog3d.program);
 	if (gl3_prog_alias.program)
 		glDeleteProgram (gl3_prog_alias.program);
+	if (gl3_prog_part.program)
+		glDeleteProgram (gl3_prog_part.program);
 	memset (&gl3_prog2d, 0, sizeof(gl3_prog2d));
 	memset (&gl3_prog3d, 0, sizeof(gl3_prog3d));
 	memset (&gl3_prog_alias, 0, sizeof(gl3_prog_alias));
+	memset (&gl3_prog_part, 0, sizeof(gl3_prog_part));
 }

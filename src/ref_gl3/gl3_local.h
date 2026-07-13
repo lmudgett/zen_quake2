@@ -156,6 +156,20 @@ void GL3_InitMesh (void);				// create VAO/VBO
 void GL3_ShutdownMesh (void);
 void GL3_DrawAliasModel (entity_t *e, const float *viewproj);
 
+// particles (gl3_particles.c)
+typedef struct
+{
+	GLuint	program;
+	GLint	u_mvp;
+	GLint	u_gamma;
+	GLint	u_psize;		// base point size scaled by 1/w in the shader
+} gl3progpart_t;
+extern gl3progpart_t	gl3_prog_part;
+
+void GL3_InitParticles (void);
+void GL3_ShutdownParticles (void);
+void GL3_DrawParticles (const float *viewproj);
+
 extern float	gl3_viewproj[16];		// projection * view for the current frame
 
 #endif // GL3_LOCAL_H

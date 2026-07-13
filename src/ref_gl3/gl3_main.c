@@ -165,6 +165,7 @@ static void GL3_RenderFrame (refdef_t *fd)
 	GL3_MarkLeaves ();
 	GL3_DrawWorld ();
 	GL3_DrawEntities ();
+	GL3_DrawParticles (gl3_viewproj);
 
 	// restore 2D state for the HUD/console the client draws next
 	glDisable (GL_DEPTH_TEST);
@@ -220,6 +221,7 @@ static int GL3_Init (void *hinstance, void *wndproc)
 	GL3_InitShaders ();
 	GL3_Draw_Init ();
 	GL3_InitMesh ();
+	GL3_InitParticles ();
 	GL3_Mod_Init ();
 
 	ri.Cmd_AddCommand ("imagelist", GL3_ImageList_f);
@@ -237,6 +239,7 @@ static void GL3_Shutdown (void)
 	ri.Cmd_RemoveCommand ("screenshot");
 	GL3_Mod_FreeAll ();
 	GL3_ShutdownMesh ();
+	GL3_ShutdownParticles ();
 	GL3_Draw_Shutdown ();
 	GL3_ShutdownShaders ();
 	GL3_ShutdownImages ();
