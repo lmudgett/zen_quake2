@@ -169,6 +169,11 @@ static void GL3_RenderFrame (refdef_t *fd)
 	glDisable (GL_DEPTH_TEST);
 	glDisable (GL_CULL_FACE);
 	GL3_Draw_SetOrtho ();
+
+	// full-screen damage/pickup/underwater colour wash
+	if (r_newrefdef.blend[3] != 0)
+		GL3_Draw_PolyBlend (r_newrefdef.blend[0], r_newrefdef.blend[1],
+			r_newrefdef.blend[2], r_newrefdef.blend[3]);
 }
 
 static void GL3_BeginFrame (float camera_separation)

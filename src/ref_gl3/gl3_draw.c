@@ -226,6 +226,22 @@ void GL3_Draw_FadeScreen (void)
 		0, 0, 1, 1, 0, 0, 0, 0.8f);
 }
 
+// full-screen colour wash (damage/pickup/underwater), from refdef.blend.
+// Draws the literal colour (intensity/gamma neutralised, then restored so the
+// HUD the client draws afterwards keeps correct brightness).
+void GL3_Draw_PolyBlend (float r, float g, float b, float a)
+{
+	if (a <= 0.0f)
+		return;
+
+	glUniform1f (gl3_prog2d.u_intensity, 1.0f);
+	glUniform1f (gl3_prog2d.u_gamma, 1.0f);
+	GL3_DrawQuad (white_tex, 0, 0, (float)gl3state.width, (float)gl3state.height,
+		0, 0, 1, 1, r, g, b, a);
+	glUniform1f (gl3_prog2d.u_intensity, gl_intensity ? gl_intensity->value : 1.0f);
+	glUniform1f (gl3_prog2d.u_gamma, (vid_gamma && vid_gamma->value >= 0.5f) ? vid_gamma->value : 1.0f);
+}
+
 void GL3_Draw_StretchRaw (int x, int y, int w, int h, int cols, int rows, byte *data)
 {
 	static unsigned	buf[256 * 256];

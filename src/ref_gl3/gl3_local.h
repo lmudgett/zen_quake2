@@ -100,6 +100,7 @@ void GL3_Draw_Char (int x, int y, int num);
 void GL3_Draw_TileClear (int x, int y, int w, int h, char *name);
 void GL3_Draw_Fill (int x, int y, int w, int h, int c);
 void GL3_Draw_FadeScreen (void);
+void GL3_Draw_PolyBlend (float r, float g, float b, float a);
 void GL3_Draw_StretchRaw (int x, int y, int w, int h, int cols, int rows, byte *data);
 
 // cvars
