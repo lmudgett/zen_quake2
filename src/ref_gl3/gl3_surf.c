@@ -302,6 +302,7 @@ void GL3_DrawWorld (void)
 	if (!r_worldmodel || !world_vao)
 		return;
 
+	glUniform1f (gl3_prog3d.u_alpha, 1.0f);
 	glBindVertexArray (world_vao);
 
 	surf = r_worldmodel->surfaces;
@@ -312,7 +313,9 @@ void GL3_DrawWorld (void)
 		int		lit;
 
 		if (surf->flags & SURF_DRAWSKY)
-			continue;			// sky handled separately (later)
+			continue;			// sky handled separately
+		if (surf->texinfo && (surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66)))
+			continue;			// translucent surfaces drawn in a later pass
 
 		img = surf->texinfo ? GL3_TextureAnimation (surf->texinfo) : NULL;
 		if (!img)
@@ -341,6 +344,55 @@ void GL3_DrawWorld (void)
 			c_brush_polys++;
 		}
 	}
+}
+
+/*
+=================
+GL3_DrawWorldTranslucent
+
+Second pass: TRANS33/TRANS66 surfaces (glass, force fields, some water)
+drawn alpha-blended after the opaque world. Depth-tested but not written.
+=================
+*/
+void GL3_DrawWorldTranslucent (void)
+{
+	int			i;
+	msurface_t	*surf;
+
+	if (!r_worldmodel || !world_vao)
+		return;
+
+	glUseProgram (gl3_prog3d.program);
+	glUniform1i (gl3_prog3d.u_lm_enabled, 0);
+	glEnable (GL_BLEND);
+	glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glDepthMask (GL_FALSE);
+	glBindVertexArray (world_vao);
+
+	surf = r_worldmodel->surfaces;
+	for (i = 0; i < r_worldmodel->numsurfaces; i++, surf++)
+	{
+		image_t		*img;
+		glpoly_t	*p;
+
+		if (!surf->texinfo || !(surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66)))
+			continue;
+
+		glUniform1f (gl3_prog3d.u_alpha,
+			(surf->texinfo->flags & SURF_TRANS33) ? 0.33f : 0.66f);
+
+		img = GL3_TextureAnimation (surf->texinfo);
+		if (!img)
+			img = r_notexture;
+		GL3_Bind (img->texnum);
+
+		for (p = surf->polys; p; p = p->next)
+			glDrawArrays (GL_TRIANGLE_FAN, p->vbo_firstvert, p->numverts);
+	}
+
+	glUniform1f (gl3_prog3d.u_alpha, 1.0f);
+	glDepthMask (GL_TRUE);
+	glDisable (GL_BLEND);
 }
 
 // draw a single world surface (diffuse + lightmap) -- used for inline bmodels

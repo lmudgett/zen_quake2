@@ -98,6 +98,7 @@ static const char *frag3d =
 	"uniform int u_lm_enabled;\n"
 	"uniform float u_gamma;\n"
 	"uniform float u_intensity;\n"
+	"uniform float u_alpha;\n"
 	"out vec4 frag;\n"
 	"void main() {\n"
 	"    vec4 diff = texture(u_tex, v_uv);\n"
@@ -105,7 +106,7 @@ static const char *frag3d =
 	"    if (u_lm_enabled != 0)\n"
 	"        c *= texture(u_lightmap, v_lmuv).rgb * 2.0;\n"	// overbright
 	"    c = pow(c, vec3(1.0 / u_gamma));\n"
-	"    frag = vec4(c, diff.a);\n"
+	"    frag = vec4(c, diff.a * u_alpha);\n"
 	"}\n";
 
 gl3prog3d_t	gl3_prog3d;
@@ -186,7 +187,9 @@ void GL3_InitShaders (void)
 	gl3_prog3d.u_gamma = glGetUniformLocation (gl3_prog3d.program, "u_gamma");
 	gl3_prog3d.u_intensity = glGetUniformLocation (gl3_prog3d.program, "u_intensity");
 	gl3_prog3d.u_lm_enabled = glGetUniformLocation (gl3_prog3d.program, "u_lm_enabled");
+	gl3_prog3d.u_alpha = glGetUniformLocation (gl3_prog3d.program, "u_alpha");
 	glUseProgram (gl3_prog3d.program);
+	glUniform1f (gl3_prog3d.u_alpha, 1.0f);
 	glUniform1i (glGetUniformLocation (gl3_prog3d.program, "u_tex"), 0);		// diffuse on unit 0
 	glUniform1i (glGetUniformLocation (gl3_prog3d.program, "u_lightmap"), 1);	// lightmap on unit 1
 

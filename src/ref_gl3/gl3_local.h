@@ -79,6 +79,7 @@ typedef struct
 	GLint	u_gamma;
 	GLint	u_intensity;
 	GLint	u_lm_enabled;	// int (0/1)
+	GLint	u_alpha;		// float surface alpha (1 opaque)
 } gl3prog3d_t;
 
 extern gl3prog3d_t	gl3_prog3d;
@@ -140,6 +141,7 @@ void GL3_EndBuildingLightmaps (void);
 // world rendering (gl3_surf.c)
 void GL3_BuildWorldVBO (void);			// upload all world polys after registration
 void GL3_DrawWorld (void);				// draw the visible world this frame
+void GL3_DrawWorldTranslucent (void);	// TRANS33/66 surfaces, blended pass
 void GL3_DrawBrushModel (entity_t *e, const float *viewproj);	// inline bmodels (doors/plats)
 void GL3_MarkLeaves (void);
 

@@ -163,6 +163,7 @@ static void GL3_RenderFrame (refdef_t *fd)
 	GL3_DrawSkyBox (gl3_viewproj, r_newrefdef.vieworg);	// background, before the world
 	GL3_DrawWorld ();
 	GL3_DrawEntities ();
+	GL3_DrawWorldTranslucent ();		// glass / force fields, blended
 	GL3_DrawParticles (gl3_viewproj);
 
 	// restore 2D state for the HUD/console the client draws next
