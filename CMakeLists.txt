@@ -216,6 +216,7 @@ file(GLOB REF_GL3_SOURCES src/ref_gl3/gl3_*.c)
 add_library(ref_gl3 MODULE
     ${REF_GL3_SOURCES}
     src/ref_gl3/glad/src/gl.c
+    src/game/q_shared.c             # Com_sprintf/va/byte-swap utilities
 )
 target_include_directories(ref_gl3 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src

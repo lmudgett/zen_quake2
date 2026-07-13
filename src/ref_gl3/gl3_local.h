@@ -18,15 +18,74 @@
 // the import table the engine hands us (printing, cvars, files, ...)
 extern refimport_t	ri;
 
+typedef enum { it_skin, it_sprite, it_wall, it_pic, it_sky } imagetype_t;
+
+typedef struct image_s
+{
+	char		name[MAX_QPATH];
+	imagetype_t	type;
+	int			width, height;			// source dimensions
+	int			registration_sequence;	// free unreferenced images between maps
+	struct msurface_s	*texturechain;	// used by world rendering later
+	GLuint		texnum;					// GL texture object
+	qboolean	has_alpha;
+} image_t;
+
+#define MAX_GLTEXTURES	1024
+
 typedef struct
 {
 	int			width, height;		// current drawable size in pixels
 	qboolean	fullscreen;
 	SDL_Window	*window;
 	SDL_GLContext	context;
+
+	int			currenttexture;		// bound GL texture cache
 } gl3state_t;
 
 extern gl3state_t	gl3state;
+
+extern unsigned		d_8to24table[256];	// palette as RGBA
+extern image_t		gl3textures[MAX_GLTEXTURES];
+extern int			numgl3textures;
+extern int			registration_sequence;
+
+// gl3_image.c -- Quake 2 asset loading (PCX/TGA/WAL) and GL texture upload
+void     GL3_InitImages (void);
+void     GL3_ShutdownImages (void);
+image_t *GL3_FindImage (char *name, imagetype_t type);
+image_t *GL3_LoadPic (char *name, byte *pic, int width, int height, imagetype_t type, int bits);
+void     GL3_ImageList_f (void);
+void     GL3_Bind (GLuint texnum);
+
+// gl3_shaders.c -- GLSL program management
+typedef struct
+{
+	GLuint	program;
+	GLint	u_ortho;		// mat4 for 2D
+	GLint	u_color;		// vec4 tint
+} gl3prog2d_t;
+
+extern gl3prog2d_t	gl3_prog2d;
+
+void GL3_InitShaders (void);
+void GL3_ShutdownShaders (void);
+GLuint GL3_CompileProgram (const char *vtx, const char *frag);
+
+// gl3_draw.c -- 2D drawing
+void GL3_Draw_Init (void);
+void GL3_Draw_Shutdown (void);
+void GL3_Draw_SetOrtho (void);						// call each frame before 2D
+void GL3_Draw_Flush (void);							// emit any batched quads
+struct image_s *GL3_Draw_FindPic (char *name);
+void GL3_Draw_GetPicSize (int *w, int *h, char *name);
+void GL3_Draw_Pic (int x, int y, char *name);
+void GL3_Draw_StretchPic (int x, int y, int w, int h, char *name);
+void GL3_Draw_Char (int x, int y, int num);
+void GL3_Draw_TileClear (int x, int y, int w, int h, char *name);
+void GL3_Draw_Fill (int x, int y, int w, int h, int c);
+void GL3_Draw_FadeScreen (void);
+void GL3_Draw_StretchRaw (int x, int y, int w, int h, int cols, int rows, byte *data);
 
 // cvars
 extern cvar_t	*gl_mode;
