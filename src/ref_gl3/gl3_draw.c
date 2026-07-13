@@ -48,7 +48,9 @@ void GL3_Draw_Init (void)
 	for (i = 0; i < 256; i++)
 		raw_palette[i] = d_8to24table[i];
 
-	draw_chars = GL3_FindImage ("pics/conchars", it_pic);
+	draw_chars = GL3_FindImage ("pics/conchars.pcx", it_pic);
+	if (!draw_chars)
+		ri.Sys_Error (ERR_FATAL, "GL3_Draw_Init: couldn't load pics/conchars.pcx");
 }
 
 void GL3_Draw_Shutdown (void)
