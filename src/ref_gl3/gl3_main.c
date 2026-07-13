@@ -159,6 +159,7 @@ static void GL3_RenderFrame (refdef_t *fd)
 	glUniform1i (gl3_prog3d.u_lm_enabled, 0);	// diffuse-only for now
 	glActiveTexture (GL_TEXTURE0);
 
+	GL3_SetFrustum ();
 	GL3_MarkLeaves ();
 	GL3_DrawSkyBox (gl3_viewproj, r_newrefdef.vieworg);	// background, before the world
 	GL3_DrawWorld ();

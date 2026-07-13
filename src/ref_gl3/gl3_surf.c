@@ -15,6 +15,16 @@ int		r_framecount = 1;
 int		r_visframecount;
 
 static cvar_t	*gl_modulate;
+static cvar_t	*r_novis;
+static cvar_t	*r_nocull;
+
+// view frustum for box culling (built each frame from the refdef)
+static cplane_t	frustum[4];
+static vec3_t	modelorg;			// viewer origin, for node facing tests
+
+// PVS cluster tracking; -2 forces a re-mark on the first frame of a map
+static int		r_viewcluster = -1, r_viewcluster2 = -1;
+static int		r_oldviewcluster = -2, r_oldviewcluster2 = -2;
 
 // ------------------------------------------------------------------ lightmaps
 
@@ -162,6 +172,7 @@ void GL3_BeginBuildingLightmaps (model_t *m)
 
 	memset (gl_lms.allocated, 0, sizeof(gl_lms.allocated));
 	r_framecount = 1;
+	r_oldviewcluster = r_oldviewcluster2 = -2;	// force a PVS re-mark on the new map
 
 	if (!gl_modulate)
 		gl_modulate = ri.Cvar_Get ("gl_modulate", "1", CVAR_ARCHIVE);
@@ -278,12 +289,226 @@ void GL3_BuildWorldVBO (void)
 		world_numverts, r_worldmodel->numsurfaces);
 }
 
-// ------------------------------------------------------------------ draw
+// ------------------------------------------------------------------ culling
 
+static int SignbitsForPlane (cplane_t *p)
+{
+	int	bits = 0, j;
+
+	for (j = 0; j < 3; j++)
+		if (p->normal[j] < 0)
+			bits |= 1 << j;
+	return bits;
+}
+
+// build the four side planes of the view frustum from the current refdef
+void GL3_SetFrustum (void)
+{
+	vec3_t	vpn, vright, vup;
+	int		i;
+
+	AngleVectors (r_newrefdef.viewangles, vpn, vright, vup);
+
+	RotatePointAroundVector (frustum[0].normal, vup, vpn, -(90 - r_newrefdef.fov_x / 2));
+	RotatePointAroundVector (frustum[1].normal, vup, vpn, 90 - r_newrefdef.fov_x / 2);
+	RotatePointAroundVector (frustum[2].normal, vright, vpn, 90 - r_newrefdef.fov_y / 2);
+	RotatePointAroundVector (frustum[3].normal, vright, vpn, -(90 - r_newrefdef.fov_y / 2));
+
+	for (i = 0; i < 4; i++)
+	{
+		frustum[i].type = PLANE_ANYZ;
+		frustum[i].dist = DotProduct (r_newrefdef.vieworg, frustum[i].normal);
+		frustum[i].signbits = SignbitsForPlane (&frustum[i]);
+	}
+}
+
+// true if the box is completely outside the frustum
+qboolean GL3_CullBox (vec3_t mins, vec3_t maxs)
+{
+	int	i;
+
+	if (r_nocull && r_nocull->value)
+		return false;
+
+	for (i = 0; i < 4; i++)
+		if (BoxOnPlaneSide (mins, maxs, &frustum[i]) == 2)
+			return true;
+	return false;
+}
+
+/*
+=================
+GL3_MarkLeaves
+
+Find the cluster the view origin is in and flag every leaf (and its parent
+nodes) in that cluster's PVS with the current visframecount. Uses a second
+cluster 16 units above/below the eye so surfaces don't drop out while
+crossing a water boundary.
+=================
+*/
 void GL3_MarkLeaves (void)
 {
-	// PVS culling comes later; for now everything is considered visible
+	static byte	fatvis[MAX_MAP_LEAFS / 8];
+	byte		*vis;
+	mnode_t		*node;
+	mleaf_t		*leaf;
+	int			i, c, cluster;
+
+	if (!r_worldmodel || (r_newrefdef.rdflags & RDF_NOWORLDMODEL))
+		return;
+
+	if (!r_novis)
+	{
+		r_novis = ri.Cvar_Get ("r_novis", "0", 0);
+		r_nocull = ri.Cvar_Get ("r_nocull", "0", 0);
+	}
+
+	// current view cluster (and a second one just above/below the eye)
+	leaf = GL3_Mod_PointInLeaf (r_newrefdef.vieworg, r_worldmodel);
+	r_viewcluster = r_viewcluster2 = leaf->cluster;
+
+	if (!leaf->contents)
+	{	// look down a bit
+		vec3_t	temp;
+		VectorCopy (r_newrefdef.vieworg, temp);
+		temp[2] -= 16;
+		leaf = GL3_Mod_PointInLeaf (temp, r_worldmodel);
+		if (!(leaf->contents & CONTENTS_SOLID) && leaf->cluster != r_viewcluster2)
+			r_viewcluster2 = leaf->cluster;
+	}
+	else
+	{	// look up a bit
+		vec3_t	temp;
+		VectorCopy (r_newrefdef.vieworg, temp);
+		temp[2] += 16;
+		leaf = GL3_Mod_PointInLeaf (temp, r_worldmodel);
+		if (!(leaf->contents & CONTENTS_SOLID) && leaf->cluster != r_viewcluster2)
+			r_viewcluster2 = leaf->cluster;
+	}
+
+	if (r_oldviewcluster == r_viewcluster && r_oldviewcluster2 == r_viewcluster2
+		&& !r_novis->value && r_viewcluster != -1)
+		return;					// same PVS as last frame
+
+	r_visframecount++;
+	r_oldviewcluster = r_viewcluster;
+	r_oldviewcluster2 = r_viewcluster2;
+
+	if (r_novis->value || r_viewcluster == -1 || !r_worldmodel->vis)
+	{
+		// no vis data (or disabled): everything visible
+		for (i = 0; i < r_worldmodel->numleafs; i++)
+			r_worldmodel->leafs[i].visframe = r_visframecount;
+		for (i = 0; i < r_worldmodel->numnodes; i++)
+			r_worldmodel->nodes[i].visframe = r_visframecount;
+		return;
+	}
+
+	vis = GL3_Mod_ClusterPVS (r_viewcluster, r_worldmodel);
+
+	// may need to combine two clusters because of solid water boundaries
+	if (r_viewcluster2 != r_viewcluster)
+	{
+		memcpy (fatvis, vis, (r_worldmodel->numleafs + 7) / 8);
+		vis = GL3_Mod_ClusterPVS (r_viewcluster2, r_worldmodel);
+		c = (r_worldmodel->numleafs + 31) / 32;
+		for (i = 0; i < c; i++)
+			((int *)fatvis)[i] |= ((int *)vis)[i];
+		vis = fatvis;
+	}
+
+	for (i = 0, leaf = r_worldmodel->leafs; i < r_worldmodel->numleafs; i++, leaf++)
+	{
+		cluster = leaf->cluster;
+		if (cluster == -1)
+			continue;
+		if (vis[cluster >> 3] & (1 << (cluster & 7)))
+		{
+			node = (mnode_t *)leaf;
+			do
+			{
+				if (node->visframe == r_visframecount)
+					break;
+				node->visframe = r_visframecount;
+				node = node->parent;
+			} while (node);
+		}
+	}
 }
+
+/*
+=================
+R_RecursiveWorldNode
+
+Walk the visible part of the BSP front-to-back, frustum-culling by node
+bounds. Leaves stamp their surfaces' visframe; nodes then stamp drawframe
+on those of their surfaces that face the viewer. The draw passes render
+only surfaces with the current drawframe.
+=================
+*/
+static void R_RecursiveWorldNode (mnode_t *node)
+{
+	int			c, side, sidebit;
+	cplane_t	*plane;
+	msurface_t	*surf, **mark;
+	mleaf_t		*pleaf;
+	float		dot;
+
+	if (node->contents == CONTENTS_SOLID)
+		return;
+	if (node->visframe != r_visframecount)
+		return;
+	if (GL3_CullBox (node->minmaxs, node->minmaxs + 3))
+		return;
+
+	if (node->contents != -1)
+	{	// leaf: mark its surfaces as being in the PVS this frame
+		pleaf = (mleaf_t *)node;
+
+		// door-closed areas are connected off server-side; skip them
+		if (r_newrefdef.areabits &&
+			!(r_newrefdef.areabits[pleaf->area >> 3] & (1 << (pleaf->area & 7))))
+			return;
+
+		mark = pleaf->firstmarksurface;
+		c = pleaf->nummarksurfaces;
+		while (c--)
+		{
+			(*mark)->visframe = r_framecount;
+			mark++;
+		}
+		return;
+	}
+
+	// which side of the node's plane is the viewer on?
+	plane = node->plane;
+	switch (plane->type)
+	{
+	case PLANE_X:	dot = modelorg[0] - plane->dist; break;
+	case PLANE_Y:	dot = modelorg[1] - plane->dist; break;
+	case PLANE_Z:	dot = modelorg[2] - plane->dist; break;
+	default:		dot = DotProduct (modelorg, plane->normal) - plane->dist; break;
+	}
+	side = (dot >= 0) ? 0 : 1;
+	sidebit = side ? SURF_PLANEBACK : 0;
+
+	R_RecursiveWorldNode (node->children[side]);
+
+	// this node's surfaces: draw the ones in the PVS that face the viewer
+	surf = r_worldmodel->surfaces + node->firstsurface;
+	for (c = node->numsurfaces; c; c--, surf++)
+	{
+		if (surf->visframe != r_framecount)
+			continue;			// not in a visible leaf
+		if ((surf->flags & SURF_PLANEBACK) != sidebit)
+			continue;			// facing away
+		surf->drawframe = r_framecount;
+	}
+
+	R_RecursiveWorldNode (node->children[!side]);
+}
+
+// ------------------------------------------------------------------ draw
 
 static image_t *GL3_TextureAnimation (mtexinfo_t *tex)
 {
@@ -302,6 +527,11 @@ void GL3_DrawWorld (void)
 	if (!r_worldmodel || !world_vao)
 		return;
 
+	// walk the BSP: stamps drawframe on PVS-visible, frustum-passing,
+	// front-facing surfaces for all of this frame's world passes
+	VectorCopy (r_newrefdef.vieworg, modelorg);
+	R_RecursiveWorldNode (r_worldmodel->nodes);
+
 	glUniform1f (gl3_prog3d.u_alpha, 1.0f);
 	glBindVertexArray (world_vao);
 
@@ -312,6 +542,8 @@ void GL3_DrawWorld (void)
 		glpoly_t *p;
 		int		lit;
 
+		if (surf->drawframe != r_framecount)
+			continue;			// not visible this frame
 		if (surf->flags & (SURF_DRAWSKY | SURF_DRAWTURB))
 			continue;			// sky and water drawn in their own passes
 		if (surf->texinfo && (surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66)))
@@ -376,6 +608,8 @@ void GL3_DrawWater (const float *viewproj, float time)
 		image_t		*img;
 		glpoly_t	*p;
 
+		if (surf->drawframe != r_framecount)
+			continue;
 		if (!(surf->flags & SURF_DRAWTURB))
 			continue;
 
@@ -406,6 +640,7 @@ void GL3_DrawWorldTranslucent (void)
 		return;
 
 	glUseProgram (gl3_prog3d.program);
+	glUniformMatrix4fv (gl3_prog3d.u_mvp, 1, GL_FALSE, gl3_viewproj);	// entities may have changed it
 	glUniform1i (gl3_prog3d.u_lm_enabled, 0);
 	glEnable (GL_BLEND);
 	glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -418,6 +653,8 @@ void GL3_DrawWorldTranslucent (void)
 		image_t		*img;
 		glpoly_t	*p;
 
+		if (surf->drawframe != r_framecount)
+			continue;
 		if (!surf->texinfo || !(surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66)))
 			continue;
 		if (surf->flags & SURF_DRAWTURB)
@@ -445,16 +682,16 @@ static void GL3_DrawSurface (msurface_t *surf)
 {
 	image_t		*img;
 	glpoly_t	*p;
-	int			lit;
+	int			lit, trans;
 
-	if (surf->flags & SURF_DRAWSKY)
-		return;
+	if (surf->flags & (SURF_DRAWSKY | SURF_DRAWTURB))
+		return;			// turb surfaces get a warp-shader pass of their own
 
 	img = surf->texinfo ? GL3_TextureAnimation (surf->texinfo) : NULL;
 	if (!img)
 		img = r_notexture;
 
-	lit = !(surf->flags & SURF_DRAWTURB) && surf->lightmaptexturenum > 0;
+	lit = surf->lightmaptexturenum > 0;
 	glUniform1i (gl3_prog3d.u_lm_enabled, lit);
 	if (lit)
 	{
@@ -464,10 +701,28 @@ static void GL3_DrawSurface (msurface_t *surf)
 	}
 	GL3_Bind (img->texnum);
 
+	// translucent bmodel surfaces (glass doors etc.) blend in place
+	trans = surf->texinfo && (surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66));
+	if (trans)
+	{
+		glEnable (GL_BLEND);
+		glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glDepthMask (GL_FALSE);
+		glUniform1f (gl3_prog3d.u_alpha,
+			(surf->texinfo->flags & SURF_TRANS33) ? 0.33f : 0.66f);
+	}
+
 	for (p = surf->polys; p; p = p->next)
 	{
 		glDrawArrays (GL_TRIANGLE_FAN, p->vbo_firstvert, p->numverts);
 		c_brush_polys++;
+	}
+
+	if (trans)
+	{
+		glUniform1f (gl3_prog3d.u_alpha, 1.0f);
+		glDepthMask (GL_TRUE);
+		glDisable (GL_BLEND);
 	}
 }
 
@@ -485,9 +740,28 @@ void GL3_DrawBrushModel (entity_t *e, const float *viewproj)
 	model_t		*mod = (model_t *)e->model;
 	float		model_mat[16], mvp[16], tmp[16];
 	msurface_t	*surf;
-	int			i;
+	int			i, numturb = 0;
+	vec3_t		mins, maxs;
 
 	if (!mod || mod->nummodelsurfaces == 0)
+		return;
+
+	// frustum-cull by the entity's translated bounds (rotated bmodels get a
+	// conservative box the way the original did via the model radius)
+	if (e->angles[0] || e->angles[1] || e->angles[2])
+	{
+		for (i = 0; i < 3; i++)
+		{
+			mins[i] = e->origin[i] - mod->radius;
+			maxs[i] = e->origin[i] + mod->radius;
+		}
+	}
+	else
+	{
+		VectorAdd (e->origin, mod->mins, mins);
+		VectorAdd (e->origin, mod->maxs, maxs);
+	}
+	if (GL3_CullBox (mins, maxs))
 		return;
 
 	// model matrix: translate then yaw/pitch/roll (R_RotateForEntity)
@@ -503,5 +777,39 @@ void GL3_DrawBrushModel (entity_t *e, const float *viewproj)
 
 	surf = r_worldmodel->surfaces + mod->firstmodelsurface;
 	for (i = 0; i < mod->nummodelsurfaces; i++, surf++)
-		GL3_DrawSurface (surf);
+	{
+		if (surf->flags & SURF_DRAWTURB)
+			numturb++;
+		else
+			GL3_DrawSurface (surf);
+	}
+
+	// water brushes (func_water etc.) need the warp shader with this
+	// entity's transform
+	if (numturb)
+	{
+		glUseProgram (gl3_prog_warp.program);
+		glUniformMatrix4fv (gl3_prog_warp.u_mvp, 1, GL_FALSE, mvp);
+		glUniform1f (gl3_prog_warp.u_time, r_newrefdef.time);
+		glUniform1f (gl3_prog_warp.u_gamma, vid_gamma->value < 0.5f ? 0.5f : vid_gamma->value);
+		glUniform1f (gl3_prog_warp.u_intensity, gl_intensity ? gl_intensity->value : 1.0f);
+
+		surf = r_worldmodel->surfaces + mod->firstmodelsurface;
+		for (i = 0; i < mod->nummodelsurfaces; i++, surf++)
+		{
+			image_t		*img;
+			glpoly_t	*p;
+
+			if (!(surf->flags & SURF_DRAWTURB))
+				continue;
+			img = surf->texinfo ? surf->texinfo->image : NULL;
+			if (!img)
+				img = r_notexture;
+			GL3_Bind (img->texnum);
+			for (p = surf->polys; p; p = p->next)
+				glDrawArrays (GL_TRIANGLE_FAN, p->vbo_firstvert, p->numverts);
+		}
+
+		glUseProgram (gl3_prog3d.program);	// restore for subsequent entities
+	}
 }

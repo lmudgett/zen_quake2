@@ -57,7 +57,8 @@ typedef struct glpoly_s
 
 typedef struct msurface_s
 {
-	int			visframe;		// should be drawn when node is crossed
+	int			visframe;		// in a PVS-visible leaf this frame
+	int			drawframe;		// passed the node walk (facing + frustum): draw it
 
 	cplane_t	*plane;
 	int			flags;
