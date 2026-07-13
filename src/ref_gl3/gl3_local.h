@@ -170,6 +170,12 @@ void GL3_InitParticles (void);
 void GL3_ShutdownParticles (void);
 void GL3_DrawParticles (const float *viewproj);
 
+// sky (gl3_sky.c)
+void GL3_InitSky (void);
+void GL3_ShutdownSky (void);
+void GL3_SetSky (char *name, float rotate, vec3_t axis);
+void GL3_DrawSkyBox (const float *viewproj, const float *vieworg);
+
 extern float	gl3_viewproj[16];		// projection * view for the current frame
 
 #endif // GL3_LOCAL_H

@@ -63,10 +63,7 @@ static struct image_s *GL3_RegisterPic (char *name)
 	return GL3_Draw_FindPic (name);
 }
 
-static void GL3_SetSky (char *name, float rotate, vec3_t axis)
-{
-	// skybox rendering comes in a later sub-stage
-}
+// GL3_SetSky lives in gl3_sky.c
 
 // ------------------------------------------------------------------ 2D drawing
 
@@ -163,6 +160,7 @@ static void GL3_RenderFrame (refdef_t *fd)
 	glActiveTexture (GL_TEXTURE0);
 
 	GL3_MarkLeaves ();
+	GL3_DrawSkyBox (gl3_viewproj, r_newrefdef.vieworg);	// background, before the world
 	GL3_DrawWorld ();
 	GL3_DrawEntities ();
 	GL3_DrawParticles (gl3_viewproj);
@@ -222,6 +220,7 @@ static int GL3_Init (void *hinstance, void *wndproc)
 	GL3_Draw_Init ();
 	GL3_InitMesh ();
 	GL3_InitParticles ();
+	GL3_InitSky ();
 	GL3_Mod_Init ();
 
 	ri.Cmd_AddCommand ("imagelist", GL3_ImageList_f);
@@ -240,6 +239,7 @@ static void GL3_Shutdown (void)
 	GL3_Mod_FreeAll ();
 	GL3_ShutdownMesh ();
 	GL3_ShutdownParticles ();
+	GL3_ShutdownSky ();
 	GL3_Draw_Shutdown ();
 	GL3_ShutdownShaders ();
 	GL3_ShutdownImages ();
