@@ -92,6 +92,7 @@ typedef struct
 	GLint	u_time;
 	GLint	u_gamma;
 	GLint	u_intensity;
+	GLint	u_alpha;		// translucent water
 } gl3progwarp_t;
 extern gl3progwarp_t	gl3_prog_warp;
 

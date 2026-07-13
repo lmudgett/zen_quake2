@@ -165,6 +165,7 @@ static const char *fragWarp =
 	"uniform float u_time;\n"
 	"uniform float u_gamma;\n"
 	"uniform float u_intensity;\n"
+	"uniform float u_alpha;\n"		// translucent water (TRANS33/66)
 	"out vec4 frag;\n"
 	"void main() {\n"
 	"    vec2 w;\n"
@@ -173,7 +174,7 @@ static const char *fragWarp =
 	"    w /= 64.0;\n"
 	"    vec4 t = texture(u_tex, w);\n"
 	"    vec3 c = pow(t.rgb * u_intensity, vec3(u_gamma));\n"
-	"    frag = vec4(c, t.a);\n"
+	"    frag = vec4(c, t.a * u_alpha);\n"
 	"}\n";
 
 gl3progwarp_t	gl3_prog_warp;
@@ -189,7 +190,7 @@ static const char *vtxPart =
 	"void main() {\n"
 	"    v_color = a_color;\n"
 	"    gl_Position = u_mvp * vec4(a_pos, 1.0);\n"
-	"    gl_PointSize = clamp(u_psize / gl_Position.w, 1.0, 64.0);\n"
+	"    gl_PointSize = clamp(u_psize / gl_Position.w, 2.0, 40.0);\n"	// id min/max point sizes
 	"}\n";
 
 static const char *fragPart =
@@ -198,8 +199,9 @@ static const char *fragPart =
 	"uniform float u_gamma;\n"
 	"out vec4 frag;\n"
 	"void main() {\n"
-	"    vec2 d = gl_PointCoord - vec2(0.5);\n"
-	"    if (dot(d, d) > 0.25) discard;\n"			// round particle
+	// square untextured points, like id's GL_EXT_point_parameters path.
+	// (no gl_PointCoord round-mask: it reads as (0,0) on some drivers here,
+	// which used to discard every particle fragment)
 	"    vec3 c = pow(v_color.rgb, vec3(u_gamma));\n"
 	"    frag = vec4(c, v_color.a);\n"
 	"}\n";
@@ -247,7 +249,9 @@ void GL3_InitShaders (void)
 	gl3_prog_warp.u_time = glGetUniformLocation (gl3_prog_warp.program, "u_time");
 	gl3_prog_warp.u_gamma = glGetUniformLocation (gl3_prog_warp.program, "u_gamma");
 	gl3_prog_warp.u_intensity = glGetUniformLocation (gl3_prog_warp.program, "u_intensity");
+	gl3_prog_warp.u_alpha = glGetUniformLocation (gl3_prog_warp.program, "u_alpha");
 	glUseProgram (gl3_prog_warp.program);
+	glUniform1f (gl3_prog_warp.u_alpha, 1.0f);
 	glUniform1i (glGetUniformLocation (gl3_prog_warp.program, "u_tex"), 0);
 }
 

@@ -828,6 +828,8 @@ void GL3_DrawWater (const float *viewproj, float time)
 			continue;
 		if (!(surf->flags & SURF_DRAWTURB))
 			continue;
+		if (surf->texinfo && (surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66)))
+			continue;			// translucent water: blended pass below
 
 		img = surf->texinfo ? surf->texinfo->image : NULL;
 		if (!img)
@@ -874,7 +876,7 @@ void GL3_DrawWorldTranslucent (void)
 		if (!surf->texinfo || !(surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66)))
 			continue;
 		if (surf->flags & SURF_DRAWTURB)
-			continue;			// translucent water handled by the water pass
+			continue;			// translucent water drawn below with the warp shader
 
 		glUniform1f (gl3_prog3d.u_alpha,
 			(surf->texinfo->flags & SURF_TRANS33) ? 0.33f : 0.66f);
@@ -889,6 +891,39 @@ void GL3_DrawWorldTranslucent (void)
 	}
 
 	glUniform1f (gl3_prog3d.u_alpha, 1.0f);
+
+	// translucent water/lava/slime: warp shader, still blended, no depth writes.
+	// intensity neutral, like id's inverse_intensity scale for alpha surfaces
+	glUseProgram (gl3_prog_warp.program);
+	glUniformMatrix4fv (gl3_prog_warp.u_mvp, 1, GL_FALSE, gl3_viewproj);
+	glUniform1f (gl3_prog_warp.u_time, r_newrefdef.time);
+	glUniform1f (gl3_prog_warp.u_gamma, vid_gamma->value < 0.5f ? 0.5f : vid_gamma->value);
+	glUniform1f (gl3_prog_warp.u_intensity, 1.0f);
+
+	surf = r_worldmodel->surfaces;
+	for (i = 0; i < r_worldmodel->numsurfaces; i++, surf++)
+	{
+		image_t		*img;
+		glpoly_t	*p;
+
+		if (surf->drawframe != r_framecount)
+			continue;
+		if (!(surf->flags & SURF_DRAWTURB))
+			continue;
+		if (!surf->texinfo || !(surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66)))
+			continue;
+
+		glUniform1f (gl3_prog_warp.u_alpha,
+			(surf->texinfo->flags & SURF_TRANS33) ? 0.33f : 0.66f);
+
+		img = surf->texinfo->image ? surf->texinfo->image : r_notexture;
+		GL3_Bind (img->texnum);
+
+		for (p = surf->polys; p; p = p->next)
+			glDrawArrays (GL_TRIANGLE_FAN, p->vbo_firstvert, p->numverts);
+	}
+
+	glUniform1f (gl3_prog_warp.u_alpha, 1.0f);
 	glDepthMask (GL_TRUE);
 	glDisable (GL_BLEND);
 }
@@ -1032,15 +1067,34 @@ void GL3_DrawBrushModel (entity_t *e, const float *viewproj)
 		{
 			image_t		*img;
 			glpoly_t	*p;
+			int			trans;
 
 			if (!(surf->flags & SURF_DRAWTURB))
 				continue;
+
+			trans = surf->texinfo && (surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66));
+			if (trans)
+			{
+				glEnable (GL_BLEND);
+				glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+				glDepthMask (GL_FALSE);
+				glUniform1f (gl3_prog_warp.u_alpha,
+					(surf->texinfo->flags & SURF_TRANS33) ? 0.33f : 0.66f);
+			}
+
 			img = surf->texinfo ? surf->texinfo->image : NULL;
 			if (!img)
 				img = r_notexture;
 			GL3_Bind (img->texnum);
 			for (p = surf->polys; p; p = p->next)
 				glDrawArrays (GL_TRIANGLE_FAN, p->vbo_firstvert, p->numverts);
+
+			if (trans)
+			{
+				glUniform1f (gl3_prog_warp.u_alpha, 1.0f);
+				glDepthMask (GL_TRUE);
+				glDisable (GL_BLEND);
+			}
 		}
 
 		glUseProgram (gl3_prog3d.program);	// restore for subsequent entities
