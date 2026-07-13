@@ -602,6 +602,12 @@ extern	gitem_t	itemlist[];
 void Cmd_Help_f (edict_t *ent);
 void Cmd_Score_f (edict_t *ent);
 
+// g_waves.c -- nemesis wave-survival mode
+void ED_CallSpawn (edict_t *ent);
+void Wave_Start (edict_t *ent);
+void Wave_RunFrame (void);
+extern qboolean wave_active;
+
 //
 // g_items.c
 //

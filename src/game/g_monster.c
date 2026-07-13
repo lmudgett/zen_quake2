@@ -533,7 +533,9 @@ void monster_death_use (edict_t *self)
 
 qboolean monster_start (edict_t *self)
 {
-	if (deathmatch->value)
+	extern qboolean wave_active;	// g_waves.c -- allow monsters in wave mode
+
+	if (deathmatch->value && !wave_active)
 	{
 		G_FreeEdict (self);
 		return false;

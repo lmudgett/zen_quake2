@@ -402,6 +402,9 @@ void G_RunFrame (void)
 		G_RunEntity (ent);
 	}
 
+	// nemesis wave-survival mode
+	Wave_RunFrame ();
+
 	// see if it is time to end a deathmatch
 	CheckDMRules ();
 
