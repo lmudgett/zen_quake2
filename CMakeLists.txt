@@ -110,6 +110,50 @@ if(WIN32)
 endif()
 
 # ---------------------------------------------------------------------------
+# Authenticode signing (Windows). Opt-in: configure with either
+#   -DQ2_SIGN_SHA1=<cert thumbprint in the user's cert store>   (dev / CI)
+# or
+#   -DQ2_SIGN_PFX=<path.pfx> [-DQ2_SIGN_PFX_PASSWORD=<pw>]        (release)
+# Signing every build keeps Windows from re-flagging the binary each run.
+# ---------------------------------------------------------------------------
+if(WIN32 AND (Q2_SIGN_SHA1 OR Q2_SIGN_PFX))
+    find_program(Q2_SIGNTOOL signtool HINTS "$ENV{WindowsSdkVerBinPath}/x64")
+    if(NOT Q2_SIGNTOOL)
+        # signtool lives under bin/<sdk-version>/x64 — glob newest-first
+        file(GLOB _q2_sdk_signtools
+            "C:/Program Files (x86)/Windows Kits/10/bin/*/x64/signtool.exe")
+        if(_q2_sdk_signtools)
+            list(SORT _q2_sdk_signtools ORDER DESCENDING)
+            list(GET _q2_sdk_signtools 0 Q2_SIGNTOOL)
+        endif()
+    endif()
+    if(NOT Q2_SIGNTOOL)
+        message(FATAL_ERROR "Signing requested but signtool.exe was not found (install the Windows SDK).")
+    endif()
+
+    set(Q2_SIGN_TS "http://timestamp.digicert.com" CACHE STRING "RFC3161 timestamp URL")
+    if(Q2_SIGN_PFX)
+        set(_q2_sign_id /f "${Q2_SIGN_PFX}")
+        if(Q2_SIGN_PFX_PASSWORD)
+            list(APPEND _q2_sign_id /p "${Q2_SIGN_PFX_PASSWORD}")
+        endif()
+    else()
+        set(_q2_sign_id /sha1 "${Q2_SIGN_SHA1}")
+    endif()
+
+    # Sign every built artifact (exe + game DLLs) after it links.
+    function(q2_sign TGT)
+        add_custom_command(TARGET ${TGT} POST_BUILD
+            COMMAND "${Q2_SIGNTOOL}" sign /fd SHA256 ${_q2_sign_id}
+                    /tr "${Q2_SIGN_TS}" /td SHA256 $<TARGET_FILE:${TGT}>
+            VERBATIM
+            COMMENT "Authenticode-signing ${TGT}")
+    endfunction()
+    q2_sign(q2ded)
+    set(Q2_SIGN_ENABLED ON)
+endif()
+
+# ---------------------------------------------------------------------------
 # Game modules — dynamic libs with the original GetGameAPI ABI
 # ---------------------------------------------------------------------------
 function(q2_game_module NAME SRCDIR OUTDIR)
@@ -124,6 +168,9 @@ function(q2_game_module NAME SRCDIR OUTDIR)
         RUNTIME_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}/${OUTDIR}>")
     if(MSVC)
         target_sources(${NAME} PRIVATE ${SRCDIR}/${NAME}.def)
+    endif()
+    if(Q2_SIGN_ENABLED)
+        q2_sign(${NAME})
     endif()
 endfunction()
 
