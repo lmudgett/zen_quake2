@@ -154,6 +154,38 @@ if(WIN32 AND (Q2_SIGN_SHA1 OR Q2_SIGN_PFX))
 endif()
 
 # ---------------------------------------------------------------------------
+# quake2 — full client (integrated server). The renderer loads dynamically.
+# ---------------------------------------------------------------------------
+file(GLOB CLIENT_SOURCES src/client/*.c)
+list(FILTER CLIENT_SOURCES EXCLUDE REGEX "/x86\\.c$")   # id386 RDTSC asm; unused on x64
+
+add_executable(quake2
+    ${QCOMMON_SOURCES}
+    ${SERVER_SOURCES}
+    ${CLIENT_SOURCES}
+    src/game/m_flash.c              # muzzle-flash offset table, shared with the client
+    src/platform/sys_sdl.c
+    src/platform/net_sockets.c
+    src/platform/vid_sdl.c
+    src/platform/vid_menu.c
+    src/platform/in_sdl.c
+    src/platform/snd_sdl.c
+    src/platform/cd_stub.c
+)
+target_include_directories(quake2 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(quake2 PRIVATE q2_common_flags SDL3::SDL3)
+if(WIN32)
+    target_link_libraries(quake2 PRIVATE ws2_32)
+endif()
+set_target_properties(quake2 PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}>")
+if(WIN32)
+    add_custom_command(TARGET quake2 POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_RUNTIME_DLLS:quake2> $<TARGET_FILE_DIR:quake2>
+        COMMAND_EXPAND_LISTS)
+endif()
+
+# ---------------------------------------------------------------------------
 # Game modules — dynamic libs with the original GetGameAPI ABI
 # ---------------------------------------------------------------------------
 function(q2_game_module NAME SRCDIR OUTDIR)

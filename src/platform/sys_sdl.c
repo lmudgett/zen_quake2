@@ -3,6 +3,7 @@
 // win32/q_shwin.c and linux/sys_linux.c + linux/q_shlinux.c.
 
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
 
 #include "../common/qcommon.h"
 
