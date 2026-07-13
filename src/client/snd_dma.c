@@ -125,8 +125,8 @@ void S_Init (void)
 	else
 	{
 		s_volume = Cvar_Get ("s_volume", "0.7", CVAR_ARCHIVE);
-		s_khz = Cvar_Get ("s_khz", "11", CVAR_ARCHIVE);
-		s_loadas8bit = Cvar_Get ("s_loadas8bit", "1", CVAR_ARCHIVE);
+		s_khz = Cvar_Get ("s_khz", "44", CVAR_ARCHIVE);		// modern default (was 11)
+		s_loadas8bit = Cvar_Get ("s_loadas8bit", "0", CVAR_ARCHIVE);	// full-quality samples
 		s_mixahead = Cvar_Get ("s_mixahead", "0.2", CVAR_ARCHIVE);
 		s_show = Cvar_Get ("s_show", "0", 0);
 		s_testsound = Cvar_Get ("s_testsound", "0", 0);

@@ -1169,12 +1169,12 @@ static void UpdateSoundQualityFunc( void *unused )
 {
 	if ( s_options_quality_list.curvalue )
 	{
-		Cvar_SetValue( "s_khz", 22 );
+		Cvar_SetValue( "s_khz", 44 );		// high
 		Cvar_SetValue( "s_loadas8bit", false );
 	}
 	else
 	{
-		Cvar_SetValue( "s_khz", 11 );
+		Cvar_SetValue( "s_khz", 22 );		// low (was 11)
 		Cvar_SetValue( "s_loadas8bit", true );
 	}
 	
