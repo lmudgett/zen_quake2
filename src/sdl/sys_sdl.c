@@ -93,6 +93,46 @@ char *Sys_ConsoleInput (void)
 		return NULL;
 
 #ifdef _WIN32
+	// piped or file-redirected stdin (scripts, service wrappers) can't use
+	// the conio console API — poll the handle and read whole lines instead
+	{
+		static DWORD	stdin_type = FILE_TYPE_UNKNOWN;
+		HANDLE			hstdin = GetStdHandle (STD_INPUT_HANDLE);
+
+		if (stdin_type == FILE_TYPE_UNKNOWN)
+			stdin_type = GetFileType (hstdin);
+
+		if (stdin_type != FILE_TYPE_CHAR)
+		{
+			DWORD	avail;
+			size_t	len;
+
+			if (!stdin_active)
+				return NULL;
+
+			if (stdin_type == FILE_TYPE_PIPE)
+			{
+				if (!PeekNamedPipe (hstdin, NULL, 0, NULL, &avail, NULL))
+				{
+					stdin_active = false;	// writer closed the pipe
+					return NULL;
+				}
+				if (!avail)
+					return NULL;
+			}
+
+			if (!fgets (console_text, sizeof(console_text), stdin))
+			{
+				stdin_active = false;		// eof
+				return NULL;
+			}
+			len = strlen (console_text);
+			while (len > 0 && (console_text[len-1] == '\n' || console_text[len-1] == '\r'))
+				console_text[--len] = 0;
+			return console_text;
+		}
+	}
+
 	while (_kbhit ())
 	{
 		int ch = _getch ();
