@@ -54,18 +54,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 typedef unsigned char 		byte;
 
-// <stdbool.h> (pulled in by SDL3 and other modern headers) defines true/false
-// as macros; strip them so the enum keeps its original int-sized ABI
-#ifdef true
-#undef true
-#endif
-#ifdef false
-#undef false
-#endif
-#ifdef bool
-#undef bool
-#endif
-typedef enum {false, true}	qboolean;
+// C23 makes bool/true/false keywords (stdbool.h is a no-op there and
+// provides the macros on older compilers). qboolean stays int-sized:
+// it crosses the game-DLL ABI inside edict_t and the import/export tables.
+#include <stdbool.h>
+typedef int	qboolean;
 
 
 #ifndef NULL
