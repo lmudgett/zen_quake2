@@ -326,8 +326,10 @@ static int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 
 void R_LightPoint (vec3_t p, vec3_t color)
 {
-	vec3_t	end;
-	float	r;
+	vec3_t		end, dist;
+	float		r, add;
+	int			lnum;
+	dlight_t	*dl;
 
 	if (!r_worldmodel || !r_worldmodel->lightdata)
 	{
@@ -347,7 +349,16 @@ void R_LightPoint (vec3_t p, vec3_t color)
 	else
 		VectorCopy (pointcolor, color);
 
-	// TODO: add dynamic lights (r_newrefdef.dlights) once dlight support lands
+	// add dynamic lights (muzzle flashes, projectile glows)
+	dl = r_newrefdef.dlights;
+	for (lnum = 0; lnum < r_newrefdef.num_dlights; lnum++, dl++)
+	{
+		VectorSubtract (p, dl->origin, dist);
+		add = dl->intensity - VectorLength (dist);
+		add *= (1.0f / 256.0f);
+		if (add > 0)
+			VectorMA (color, add, dl->color, color);
+	}
 }
 
 //===================================================================

@@ -33,6 +33,8 @@ static int		r_oldviewcluster = -2, r_oldviewcluster2 = -2;
 #define	LIGHTMAP_BYTES	4
 #define	MAX_LIGHTMAPS	128
 
+#define	DLIGHT_CUTOFF	64		// intensity below this adds nothing (id value)
+
 typedef struct
 {
 	int		current_lightmap_texture;			// 1..N (0 reserved for dynamic)
@@ -42,8 +44,10 @@ typedef struct
 
 static gllightmapstate_t	gl_lms;
 static GLuint				gl3_lightmap_tex[MAX_LIGHTMAPS];
+static GLuint				gl3_lightmap_dyn;	// page for surfaces lit by dlights this frame
 static float				s_blocklights[BLOCK_WIDTH * BLOCK_HEIGHT * 3];
 static lightstyle_t			gl3_lightstyles[MAX_LIGHTSTYLES];
+static cvar_t				*gl_dynamic;
 
 static void LM_InitBlock (void)
 {
@@ -101,6 +105,133 @@ static void LM_UploadBlock (void)
 		ri.Sys_Error (ERR_DROP, "LM_UploadBlock: MAX_LIGHTMAPS exceeded");
 }
 
+/*
+=================
+R_AddDynamicLights
+
+Add the falloff of every dlight touching this surface into s_blocklights
+(from gl_light.c). Marked surfaces carry per-frame dlightbits.
+=================
+*/
+static void R_AddDynamicLights (msurface_t *surf)
+{
+	int			lnum, i, smax, tmax, s, t, sd, td;
+	float		fdist, frad, fminlight;
+	vec3_t		impact, local;
+	dlight_t	*dl;
+	float		*bl;
+	mtexinfo_t	*tex = surf->texinfo;
+
+	smax = (surf->extents[0] >> 4) + 1;
+	tmax = (surf->extents[1] >> 4) + 1;
+
+	for (lnum = 0; lnum < r_newrefdef.num_dlights; lnum++)
+	{
+		if (!(surf->dlightbits & (1 << lnum)))
+			continue;
+
+		dl = &r_newrefdef.dlights[lnum];
+		frad = dl->intensity;
+		fdist = DotProduct (dl->origin, surf->plane->normal) - surf->plane->dist;
+		frad -= (float)fabs (fdist);	// radius of the circle on the plane
+		if (frad < DLIGHT_CUTOFF)
+			continue;
+		fminlight = frad - DLIGHT_CUTOFF;
+
+		for (i = 0; i < 3; i++)
+			impact[i] = dl->origin[i] - surf->plane->normal[i] * fdist;
+
+		local[0] = DotProduct (impact, tex->vecs[0]) + tex->vecs[0][3] - surf->texturemins[0];
+		local[1] = DotProduct (impact, tex->vecs[1]) + tex->vecs[1][3] - surf->texturemins[1];
+
+		bl = s_blocklights;
+		for (t = 0; t < tmax; t++)
+		{
+			td = (int)local[1] - t * 16;
+			if (td < 0)
+				td = -td;
+			for (s = 0; s < smax; s++, bl += 3)
+			{
+				sd = (int)(local[0] - s * 16);
+				if (sd < 0)
+					sd = -sd;
+				if (sd > td)
+					fdist = sd + (td >> 1);
+				else
+					fdist = td + (sd >> 1);
+				if (fdist < fminlight)
+				{
+					bl[0] += (frad - fdist) * dl->color[0];
+					bl[1] += (frad - fdist) * dl->color[1];
+					bl[2] += (frad - fdist) * dl->color[2];
+				}
+			}
+		}
+	}
+}
+
+/*
+=================
+GL3_MarkLights / GL3_PushDlights
+
+Flag every world surface a dlight touches with this frame's dlightframe
+and the light's bit, walking only the side of each node the light reaches.
+=================
+*/
+static void GL3_MarkLights (dlight_t *light, int bit, mnode_t *node)
+{
+	cplane_t	*splitplane;
+	float		dist;
+	msurface_t	*surf;
+	int			i;
+
+	if (node->contents != -1)
+		return;
+
+	splitplane = node->plane;
+	dist = DotProduct (light->origin, splitplane->normal) - splitplane->dist;
+
+	if (dist > light->intensity - DLIGHT_CUTOFF)
+	{
+		GL3_MarkLights (light, bit, node->children[0]);
+		return;
+	}
+	if (dist < -light->intensity + DLIGHT_CUTOFF)
+	{
+		GL3_MarkLights (light, bit, node->children[1]);
+		return;
+	}
+
+	surf = r_worldmodel->surfaces + node->firstsurface;
+	for (i = 0; i < node->numsurfaces; i++, surf++)
+	{
+		if (surf->dlightframe != r_framecount)
+		{
+			surf->dlightbits = 0;
+			surf->dlightframe = r_framecount;
+		}
+		surf->dlightbits |= bit;
+	}
+
+	GL3_MarkLights (light, bit, node->children[0]);
+	GL3_MarkLights (light, bit, node->children[1]);
+}
+
+void GL3_PushDlights (void)
+{
+	int			i;
+	dlight_t	*dl;
+
+	if (!gl_dynamic)
+		gl_dynamic = ri.Cvar_Get ("gl_dynamic", "1", 0);
+	if (!gl_dynamic->value || !r_worldmodel)
+		return;
+
+	dl = r_newrefdef.dlights;
+	for (i = 0; i < r_newrefdef.num_dlights; i++, dl++)
+		GL3_MarkLights (dl, 1 << i, r_worldmodel->nodes);
+}
+
 // decode a surface's stored light samples (+ lightstyles) into RGBA texels
 static void R_BuildLightMap (msurface_t *surf, byte *dest, int stride)
 {
@@ -142,6 +273,10 @@ static void R_BuildLightMap (msurface_t *surf, byte *dest, int stride)
 			lightmap += size * 3;
 		}
 	}
+
+	// dynamic lights touching this surface (marked by GL3_PushDlights)
+	if (surf->dlightframe == r_framecount)
+		R_AddDynamicLights (surf);
 
 	// store as RGBA, rescaling if the brightest channel exceeds 255
 	stride -= smax * 4;
@@ -221,6 +356,37 @@ void GL3_CreateSurfaceLightmap (msurface_t *surf)
 void GL3_EndBuildingLightmaps (void)
 {
 	LM_UploadBlock ();	// flush the final page
+
+	// (re)create the dynamic page: surfaces touched by dlights re-upload
+	// their block (static + dynamic light) here each frame and draw from it
+	if (!gl3_lightmap_dyn)
+		glGenTextures (1, &gl3_lightmap_dyn);
+	glBindTexture (GL_TEXTURE_2D, gl3_lightmap_dyn);
+	gl3state.currenttexture = -1;
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, BLOCK_WIDTH, BLOCK_HEIGHT, 0,
+		GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+}
+
+// build this dlit surface's block (static + dynamic) and upload it into the
+// dynamic page at the surface's own page position, so its baked lm texcoords
+// stay valid; binds the dynamic page on unit 1
+static void GL3_UpdateDynamicLightmap (msurface_t *surf)
+{
+	static byte	scratch[18 * 18 * LIGHTMAP_BYTES];	// extents cap at 16 blocks + 1
+	int			smax = (surf->extents[0] >> 4) + 1;
+	int			tmax = (surf->extents[1] >> 4) + 1;
+
+	R_BuildLightMap (surf, scratch, smax * LIGHTMAP_BYTES);
+
+	glActiveTexture (GL_TEXTURE1);
+	glBindTexture (GL_TEXTURE_2D, gl3_lightmap_dyn);
+	glTexSubImage2D (GL_TEXTURE_2D, 0, surf->light_s, surf->light_t, smax, tmax,
+		GL_RGBA, GL_UNSIGNED_BYTE, scratch);
+	glActiveTexture (GL_TEXTURE0);
 }
 
 // ------------------------------------------------------------------ world VBO
@@ -560,7 +726,13 @@ void GL3_DrawWorld (void)
 			glUniform1i (gl3_prog3d.u_lm_enabled, lit);
 			cur_lm_enabled = lit;
 		}
-		if (lit && surf->lightmaptexturenum != cur_lm)
+		if (lit && surf->dlightframe == r_framecount)
+		{
+			// dlit: rebuild with dynamic light and draw from the dynamic page
+			GL3_UpdateDynamicLightmap (surf);
+			cur_lm = -1;			// next static surface must rebind its page
+		}
+		else if (lit && surf->lightmaptexturenum != cur_lm)
 		{
 			glActiveTexture (GL_TEXTURE1);
 			glBindTexture (GL_TEXTURE_2D, gl3_lightmap_tex[surf->lightmaptexturenum]);
@@ -693,7 +865,11 @@ static void GL3_DrawSurface (msurface_t *surf)
 
 	lit = surf->lightmaptexturenum > 0;
 	glUniform1i (gl3_prog3d.u_lm_enabled, lit);
-	if (lit)
+	if (lit && surf->dlightframe == r_framecount)
+	{
+		GL3_UpdateDynamicLightmap (surf);	// binds the dynamic page
+	}
+	else if (lit)
 	{
 		glActiveTexture (GL_TEXTURE1);
 		glBindTexture (GL_TEXTURE_2D, gl3_lightmap_tex[surf->lightmaptexturenum]);
@@ -763,6 +939,15 @@ void GL3_DrawBrushModel (entity_t *e, const float *viewproj)
 	}
 	if (GL3_CullBox (mins, maxs))
 		return;
+
+	// dynamic lights on the bmodel's own subtree (world-space light origins,
+	// same approximation the original used for moving models)
+	if (gl_dynamic && gl_dynamic->value)
+	{
+		dlight_t	*lt = r_newrefdef.dlights;
+		for (i = 0; i < r_newrefdef.num_dlights; i++, lt++)
+			GL3_MarkLights (lt, 1 << i, r_worldmodel->nodes + mod->firstnode);
+	}
 
 	// model matrix: translate then yaw/pitch/roll (R_RotateForEntity)
 	GL3_MatTranslate (model_mat, e->origin[0], e->origin[1], e->origin[2]);

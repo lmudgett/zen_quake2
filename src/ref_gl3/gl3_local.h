@@ -156,6 +156,7 @@ void GL3_DrawWorldTranslucent (void);	// TRANS33/66 surfaces, blended pass
 void GL3_DrawWater (const float *viewproj, float time);	// turb/warp surfaces
 void GL3_DrawBrushModel (entity_t *e, const float *viewproj);	// inline bmodels (doors/plats)
 void GL3_MarkLeaves (void);				// flag the PVS-visible leafs/nodes
+void GL3_PushDlights (void);			// mark surfaces touched by dlights
 void GL3_SetFrustum (void);				// rebuild frustum planes from the refdef
 qboolean GL3_CullBox (vec3_t mins, vec3_t maxs);	// true = fully outside the frustum
 

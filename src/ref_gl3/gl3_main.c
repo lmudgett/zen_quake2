@@ -179,6 +179,7 @@ static void GL3_RenderFrame (refdef_t *fd)
 
 	GL3_SetFrustum ();
 	GL3_MarkLeaves ();
+	GL3_PushDlights ();
 	GL3_DrawSkyBox (gl3_viewproj, r_newrefdef.vieworg);	// background, before the world
 	GL3_DrawWorld ();
 	GL3_DrawWater (gl3_viewproj, r_newrefdef.time);
