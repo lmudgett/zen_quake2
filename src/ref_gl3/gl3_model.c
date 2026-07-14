@@ -1147,7 +1147,9 @@ static void Mod_LoadAliasModel (model_t *mod, void *buffer)
 		pheader->num_skins*MAX_SKINNAME);
 	for (i=0 ; i<pheader->num_skins ; i++)
 	{
-		mod->skins[i] = GL3_RegisterSkin ((char *)pheader + pheader->ofs_skins + i*MAX_SKINNAME);
+		char *skinname = (char *)pheader + pheader->ofs_skins + i*MAX_SKINNAME;
+		skinname[MAX_SKINNAME-1] = 0;	// a crafted skin field may not be terminated
+		mod->skins[i] = GL3_RegisterSkin (skinname);
 	}
 
 	mod->mins[0] = -32;

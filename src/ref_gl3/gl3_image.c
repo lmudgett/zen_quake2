@@ -58,6 +58,7 @@ LoadPCX
 static void LoadPCX (char *filename, byte **pic, byte **palette, int *width, int *height)
 {
 	byte	*raw;
+	byte	*raw_end;
 	pcx_t	*pcx;
 	int		x, y;
 	int		len;
@@ -102,11 +103,11 @@ static void LoadPCX (char *filename, byte **pic, byte **palette, int *width, int
 		return;
 	}
 
-	out = malloc ((pcx->ymax + 1) * (pcx->xmax + 1));
-
-	*pic = out;
+	out = calloc (1, (pcx->ymax + 1) * (pcx->xmax + 1));	// zero-init: a
+	*pic = out;											// truncated file leaves no garbage
 
 	pix = out;
+	raw_end = (byte *)pcx + len;
 
 	if (palette && len >= 768)
 	{
@@ -123,20 +124,27 @@ static void LoadPCX (char *filename, byte **pic, byte **palette, int *width, int
 	{
 		for (x = 0; x <= pcx->xmax; )
 		{
+			if (raw >= raw_end)
+				goto pcx_done;			// truncated input
 			dataByte = *raw++;
 
 			if ((dataByte & 0xC0) == 0xC0)
 			{
 				runLength = dataByte & 0x3F;
+				if (raw >= raw_end)
+					goto pcx_done;
 				dataByte = *raw++;
 			}
 			else
 				runLength = 1;
 
-			while (runLength-- > 0)
+			// clamp the run to the scanline so it can't write past the row
+			// (or past the whole allocation on the final row)
+			while (runLength-- > 0 && x <= pcx->xmax)
 				pix[x++] = dataByte;
 		}
 	}
+pcx_done:
 
 	if (raw - (byte *)pcx > len)
 	{

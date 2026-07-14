@@ -325,7 +325,7 @@ wavinfo_t GetWavinfo (char *name, byte *wav, int wavlength)
 
 // get cue chunk
 	FindChunk("cue ");
-	if (data_p)
+	if (data_p && data_p + 36 <= iff_end)		// need bytes 32..35 for loopstart
 	{
 		data_p += 32;
 		info.loopstart = GetLittleLong();
