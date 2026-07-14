@@ -20,6 +20,12 @@ cvar_t	*gl_shadows;
 cvar_t	*gl_retexture;
 cvar_t	*cache_assets;
 cvar_t	*gl_bump;
+cvar_t	*r_lefthand;
+cvar_t	*gl_flashblend;
+cvar_t	*r_fullbright;
+cvar_t	*gl_lightmap;
+cvar_t	*r_speeds;
+cvar_t	*gl_texturemode;
 cvar_t	*r_drawentities;
 cvar_t	*r_lightlevel;	// HACK: server reads this for monster sight (FindTarget)
 
@@ -116,7 +122,10 @@ static void GL3_DrawEntity (entity_t *e)
 		return;
 	}
 	if (!e->model)
-		return;				// null-model boxes later
+	{
+		GL3_DrawNullModel (e, gl3_viewproj);
+		return;
+	}
 
 	switch (e->model->type)
 	{
@@ -198,6 +207,8 @@ static void GL3_RenderFrame (refdef_t *fd)
 
 	r_newrefdef = *fd;
 	r_framecount++;
+	c_brush_polys = 0;
+	c_alias_polys = 0;
 
 	if (!r_worldmodel && !(fd->rdflags & RDF_NOWORLDMODEL))
 		ri.Sys_Error (ERR_DROP, "GL3_RenderFrame: NULL worldmodel");
@@ -225,6 +236,8 @@ static void GL3_RenderFrame (refdef_t *fd)
 	glUniform1f (gl3_prog3d.u_gamma, vid_gamma->value < 0.5f ? 0.5f : vid_gamma->value);
 	glUniform1f (gl3_prog3d.u_intensity, gl_intensity->value);
 	glUniform1i (gl3_prog3d.u_lm_enabled, 0);	// diffuse-only for now
+	glUniform1i (gl3_prog3d.u_lightmode,
+		r_fullbright->value ? 1 : gl_lightmap->value ? 2 : 0);
 	glActiveTexture (GL_TEXTURE0);
 
 	GL3_SetFrustum ();
@@ -252,12 +265,17 @@ static void GL3_RenderFrame (refdef_t *fd)
 		GL3_DrawWorld ();
 		GL3_DrawWater (gl3_viewproj, r_newrefdef.time);
 		GL3_DrawEntities ();
+		GL3_RenderDlights (gl3_viewproj);	// gl_flashblend glow balls
 		GL3_DrawParticles (gl3_viewproj);	// id: particles BEFORE alpha
 											// surfaces, so glass tints them
 		GL3_DrawWorldTranslucent ();		// glass / force fields, blended
 	}
 
 	GL3_SetLightLevel ();
+
+	if (r_speeds->value)
+		ri.Con_Printf (PRINT_ALL, "%4i wpoly %4i epoly %2i dlights\n",
+			c_brush_polys, c_alias_polys, r_newrefdef.num_dlights);
 
 	// resolve + post-process (gamma, underwater warp, bloom) to the window
 	glDisable (GL_DEPTH_TEST);
@@ -316,6 +334,12 @@ static int GL3_Init (void *hinstance, void *wndproc)
 	gl_retexture = ri.Cvar_Get ("gl_retexture", "1", CVAR_ARCHIVE);	// hi-res texture packs
 	cache_assets = ri.Cvar_Get ("cache_assets", "1", CVAR_ARCHIVE);	// assets persist across maps
 	gl_bump = ri.Cvar_Get ("gl_bump", "2", CVAR_ARCHIVE);	// bump under dlights; 2 = auto-generate maps
+	r_lefthand = ri.Cvar_Get ("hand", "0", CVAR_USERINFO | CVAR_ARCHIVE);
+	gl_flashblend = ri.Cvar_Get ("gl_flashblend", "0", 0);
+	r_fullbright = ri.Cvar_Get ("r_fullbright", "0", 0);
+	gl_lightmap = ri.Cvar_Get ("gl_lightmap", "0", 0);
+	r_speeds = ri.Cvar_Get ("r_speeds", "0", 0);
+	gl_texturemode = ri.Cvar_Get ("gl_texturemode", "GL_LINEAR_MIPMAP_LINEAR", CVAR_ARCHIVE);
 	r_drawentities = ri.Cvar_Get ("r_drawentities", "1", 0);
 	r_lightlevel = ri.Cvar_Get ("r_lightlevel", "0", 0);
 

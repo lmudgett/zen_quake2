@@ -65,6 +65,7 @@ image_t *GL3_FindImage (char *name, imagetype_t type);
 image_t *GL3_LoadPic (char *name, byte *pic, int width, int height, imagetype_t type, int bits);
 void     GL3_FreeUnusedImages (void);
 void     GL3_UpdateAnisotropy (void);
+void     GL3_TextureMode (const char *string);
 void     GL3_ImageList_f (void);
 void     GL3_Bind (GLuint texnum);
 
@@ -99,6 +100,7 @@ typedef struct
 	GLint	u_tbn_t;		// per-surface tangent basis (texinfo axes)
 	GLint	u_tbn_b;
 	GLint	u_tbn_n;
+	GLint	u_lightmode;	// dev: 1 = r_fullbright, 2 = gl_lightmap
 } gl3prog3d_t;
 
 extern gl3prog3d_t	gl3_prog3d;
@@ -151,6 +153,12 @@ extern cvar_t	*gl_shadows;		// soft blob shadows under entities
 extern cvar_t	*gl_retexture;		// hi-res .png/.tga/.jpg texture overrides
 extern cvar_t	*cache_assets;		// keep textures/models resident across maps
 extern cvar_t	*gl_bump;			// 0 off, 1 _n maps only, 2 + auto-generate
+extern cvar_t	*r_lefthand;		// "hand": 1 = mirrored view weapon, 2 = hidden
+extern cvar_t	*gl_flashblend;		// dlights as additive glow balls, not lightmaps
+extern cvar_t	*r_fullbright;		// dev: draw the world without lightmaps
+extern cvar_t	*gl_lightmap;		// dev: draw lightmaps only
+extern cvar_t	*r_speeds;			// dev: per-frame poly counts to the console
+extern cvar_t	*gl_texturemode;	// GL_NEAREST .. GL_LINEAR_MIPMAP_LINEAR
 extern cvar_t	*gl_msaa;			// gl3_post.c
 extern cvar_t	*gl_renderscale;
 extern cvar_t	*gl_bloom;
@@ -187,6 +195,7 @@ extern refdef_t	r_newrefdef;			// current view being rendered
 extern int		r_framecount;
 extern int		r_visframecount;
 extern int		c_brush_polys;
+extern int		c_alias_polys;
 
 // 4x4 column-major matrix helpers (gl3_math.c)
 void GL3_MatIdentity (float *m);
@@ -228,6 +237,8 @@ void GL3_ShutdownMesh (void);
 void GL3_DrawAliasModel (entity_t *e, const float *viewproj);
 void GL3_DrawSpriteModel (entity_t *e, const float *viewproj);	// SP2 billboards
 void GL3_DrawBeam (entity_t *e, const float *viewproj);		// RF_BEAM cylinders
+void GL3_DrawNullModel (entity_t *e, const float *viewproj);	// missing-model diamond
+void GL3_RenderDlights (const float *viewproj);				// gl_flashblend glow balls
 
 // particles (gl3_particles.c): instanced billboard quads
 typedef struct

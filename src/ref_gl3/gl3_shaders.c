@@ -112,11 +112,12 @@ static const char *frag3d =
 	"uniform vec3 u_tbn_t;\n"			// per-surface texture axes + plane normal
 	"uniform vec3 u_tbn_b;\n"
 	"uniform vec3 u_tbn_n;\n"
+	"uniform int u_lightmode;\n"		// dev: 1 = r_fullbright, 2 = gl_lightmap
 	"out vec4 frag;\n"
 	"void main() {\n"	// gamma applied once in the post pass, like id's ramp
 	"    vec4 diff = texture(u_tex, v_uv);\n"
 	"    vec3 c = diff.rgb * u_intensity;\n"
-	"    if (u_lm_enabled != 0) {\n"
+	"    if (u_lm_enabled != 0 && u_lightmode != 1) {\n"
 	"        vec3 light = texture(u_lightmap, v_lmuv).rgb * 2.0;\n"	// overbright
 	"        vec3 n = vec3(0.0);\n"
 	"        if (u_bump != 0 && u_num_dlights > 0) {\n"
@@ -134,6 +135,7 @@ static const char *frag3d =
 	"            light += u_dlcolors[i] * att;\n"
 	"        }\n"
 	"        c *= light;\n"
+	"        if (u_lightmode == 2) c = light * 0.5;\n"	// raw lightmap, no overbright
 	"    }\n"
 	"    frag = vec4(c, diff.a * u_alpha);\n"
 	"}\n";
@@ -283,7 +285,9 @@ void GL3_InitShaders (void)
 	gl3_prog3d.u_tbn_t = glGetUniformLocation (gl3_prog3d.program, "u_tbn_t");
 	gl3_prog3d.u_tbn_b = glGetUniformLocation (gl3_prog3d.program, "u_tbn_b");
 	gl3_prog3d.u_tbn_n = glGetUniformLocation (gl3_prog3d.program, "u_tbn_n");
+	gl3_prog3d.u_lightmode = glGetUniformLocation (gl3_prog3d.program, "u_lightmode");
 	glUseProgram (gl3_prog3d.program);
+	glUniform1i (gl3_prog3d.u_lightmode, 0);
 	glUniform1f (gl3_prog3d.u_alpha, 1.0f);
 	glUniform1f (gl3_prog3d.u_scroll, 0.0f);
 	glUniform1i (gl3_prog3d.u_num_dlights, 0);

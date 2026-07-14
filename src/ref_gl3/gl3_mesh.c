@@ -213,6 +213,8 @@ float	r_avertexnormal_dots[SHADEDOT_QUANT][256] =
 // current shading row selected from the quantized dot table
 float	*shadedots = r_avertexnormal_dots[0];
 
+int		c_alias_polys;		// r_speeds "epoly" counter
+
 // CPU-side shade colour for the model currently being drawn
 static vec3_t	shadelight;
 
@@ -579,7 +581,11 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 	float			model[16], mvp[16], tmp[16];
 	int				i;
 
+	if ((e->flags & RF_WEAPONMODEL) && r_lefthand->value == 2.0f)
+		return;			// hand 2: no view weapon at all
+
 	paliashdr = (dmdl_t *)e->model->extradata;
+	c_alias_polys += paliashdr->num_tris;
 
 	// validate frame indices
 	if ( (e->frame >= paliashdr->num_frames) || (e->frame < 0) )
@@ -703,6 +709,15 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 	GL3_MatMul (model, model, tmp);
 
 	GL3_MatMul (mvp, viewproj, model);
+
+	// hand 1: mirror the view weapon by flipping clip-space X (id scales the
+	// projection by -1,1,1); the mirrored winding needs the opposite cull face
+	int	lefthand = (e->flags & RF_WEAPONMODEL) && r_lefthand->value == 1.0f;
+	if (lefthand)
+	{
+		mvp[0] = -mvp[0]; mvp[4] = -mvp[4]; mvp[8] = -mvp[8]; mvp[12] = -mvp[12];
+		glCullFace (GL_BACK);
+	}
 
 	//
 	// interpolate vertices
@@ -858,6 +873,8 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 
 	if (e->flags & RF_DEPTHHACK)
 		glDepthRange (0.0, 1.0);
+	if (lefthand)
+		glCullFace (GL_FRONT);
 
 	if (shell || (e->flags & RF_TRANSLUCENT))
 		glDisable (GL_BLEND);
@@ -946,6 +963,170 @@ void GL3_DrawBeam (entity_t *e, const float *viewproj)
 	glEnable (GL_CULL_FACE);
 	glDepthMask (GL_TRUE);
 	glDisable (GL_BLEND);
+}
+
+/*
+=================
+GL3_DrawNullModel
+
+Entities whose model failed to load draw as a small lit diamond
+(R_DrawNullModel), so missing assets are visible instead of silent.
+=================
+*/
+void GL3_DrawNullModel (entity_t *e, const float *viewproj)
+{
+	vec3_t	light, rim[4];
+	float	model[16], mvp[16], tmp[16];
+	float	alpha = (e->flags & RF_TRANSLUCENT) ? e->alpha : 1.0f;
+	int		i, j;
+
+	if (e->flags & RF_FULLBRIGHT)
+		light[0] = light[1] = light[2] = 1.0f;
+	else
+		R_LightPoint (e->origin, light);
+
+	// R_RotateForEntity, yaw only -- the diamond is rotationally symmetric
+	GL3_MatTranslate (model, e->origin[0], e->origin[1], e->origin[2]);
+	GL3_MatRotate (tmp, e->angles[1], 0, 0, 1);
+	GL3_MatMul (model, model, tmp);
+	GL3_MatMul (mvp, viewproj, model);
+
+	// two 4-segment cones sharing a square rim at z=0
+	for (i = 0; i < 4; i++)
+	{
+		rim[i][0] = 16.0f * cosf (i * (float)M_PI / 2.0f);
+		rim[i][1] = 16.0f * sinf (i * (float)M_PI / 2.0f);
+		rim[i][2] = 0.0f;
+	}
+
+	s_numverts = 0;
+	for (i = 0; i < 4; i++)
+	{
+		gl3_meshvert_t	v;
+
+		v.st[0] = v.st[1] = 0.0f;
+		v.color[0] = light[0]; v.color[1] = light[1]; v.color[2] = light[2];
+		v.color[3] = alpha;
+
+		j = (i + 1) & 3;
+		VectorSet (v.pos, 0, 0, -16);    GL3_EmitVert (&v);
+		VectorCopy (rim[i], v.pos);      GL3_EmitVert (&v);
+		VectorCopy (rim[j], v.pos);      GL3_EmitVert (&v);
+		VectorSet (v.pos, 0, 0, 16);     GL3_EmitVert (&v);
+		VectorCopy (rim[j], v.pos);      GL3_EmitVert (&v);
+		VectorCopy (rim[i], v.pos);      GL3_EmitVert (&v);
+	}
+
+	glUseProgram (gl3_prog_alias.program);
+	glUniformMatrix4fv (gl3_prog_alias.u_mvp, 1, GL_FALSE, mvp);
+	glUniform1f (gl3_prog_alias.u_intensity, 1.0f);
+	glUniform1f (gl3_prog_alias.u_alphacut, 0.0f);
+	GL3_Bind (white_tex);
+
+	if (alpha < 1.0f)
+	{
+		glEnable (GL_BLEND);
+		glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	}
+	glDisable (GL_CULL_FACE);
+
+	glBindVertexArray (mesh_vao);
+	glBindBuffer (GL_ARRAY_BUFFER, mesh_vbo);
+	glBufferData (GL_ARRAY_BUFFER, s_numverts * sizeof(gl3_meshvert_t),
+		s_meshverts, GL_STREAM_DRAW);
+	glDrawArrays (GL_TRIANGLES, 0, s_numverts);
+	glBindVertexArray (0);
+	glBindBuffer (GL_ARRAY_BUFFER, 0);
+
+	glEnable (GL_CULL_FACE);
+	if (alpha < 1.0f)
+		glDisable (GL_BLEND);
+}
+
+/*
+=================
+GL3_RenderDlights
+
+gl_flashblend: instead of rebuilding lightmaps, draw each dynamic light as
+an additive-blended ball -- colored center fading to black at the rim, so
+the add falls off smoothly (R_RenderDlights/R_RenderDlight).
+=================
+*/
+#define DLIGHT_BALL_SEGS 16
+
+void GL3_RenderDlights (const float *viewproj)
+{
+	int			i, j, k;
+	dlight_t	*dl;
+	vec3_t		vpn, vright, vup;
+
+	if (!gl_flashblend || !gl_flashblend->value)
+		return;
+	if (!r_newrefdef.num_dlights)
+		return;
+
+	AngleVectors (r_newrefdef.viewangles, vpn, vright, vup);
+
+	s_numverts = 0;
+	dl = r_newrefdef.dlights;
+	for (i = 0; i < r_newrefdef.num_dlights; i++, dl++)
+	{
+		gl3_meshvert_t	center, edge;
+		float			rad = dl->intensity * 0.35f;
+
+		// center pulled toward the viewer, colored; rim on the view plane,
+		// black (adds nothing)
+		for (j = 0; j < 3; j++)
+			center.pos[j] = dl->origin[j] - vpn[j] * rad;
+		center.st[0] = center.st[1] = 0.0f;
+		center.color[0] = dl->color[0] * 0.2f;
+		center.color[1] = dl->color[1] * 0.2f;
+		center.color[2] = dl->color[2] * 0.2f;
+		center.color[3] = 1.0f;
+
+		edge = center;
+		edge.color[0] = edge.color[1] = edge.color[2] = 0.0f;
+
+		for (k = 0; k < DLIGHT_BALL_SEGS; k++)
+		{
+			float	a0 = k * (2.0f * (float)M_PI / DLIGHT_BALL_SEGS);
+			float	a1 = (k + 1) * (2.0f * (float)M_PI / DLIGHT_BALL_SEGS);
+
+			GL3_EmitVert (&center);
+			for (j = 0; j < 3; j++)
+				edge.pos[j] = dl->origin[j] + vright[j] * cosf (a0) * rad
+					+ vup[j] * sinf (a0) * rad;
+			GL3_EmitVert (&edge);
+			for (j = 0; j < 3; j++)
+				edge.pos[j] = dl->origin[j] + vright[j] * cosf (a1) * rad
+					+ vup[j] * sinf (a1) * rad;
+			GL3_EmitVert (&edge);
+		}
+	}
+
+	glUseProgram (gl3_prog_alias.program);
+	glUniformMatrix4fv (gl3_prog_alias.u_mvp, 1, GL_FALSE, viewproj);	// world space
+	glUniform1f (gl3_prog_alias.u_intensity, 1.0f);
+	glUniform1f (gl3_prog_alias.u_alphacut, 0.0f);
+	GL3_Bind (white_tex);
+
+	glDepthMask (GL_FALSE);
+	glEnable (GL_BLEND);
+	glBlendFunc (GL_ONE, GL_ONE);		// additive glow
+	glDisable (GL_CULL_FACE);
+
+	glBindVertexArray (mesh_vao);
+	glBindBuffer (GL_ARRAY_BUFFER, mesh_vbo);
+	glBufferData (GL_ARRAY_BUFFER, s_numverts * sizeof(gl3_meshvert_t),
+		s_meshverts, GL_STREAM_DRAW);
+	glDrawArrays (GL_TRIANGLES, 0, s_numverts);
+	glBindVertexArray (0);
+	glBindBuffer (GL_ARRAY_BUFFER, 0);
+
+	glEnable (GL_CULL_FACE);
+	glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glDisable (GL_BLEND);
+	glDepthMask (GL_TRUE);
 }
 
 /*

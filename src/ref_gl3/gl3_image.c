@@ -383,6 +383,67 @@ void GL3_Bind (GLuint texnum)
 
 /*
 ================
+GL3_TextureMode
+
+gl_texturemode: id's GL_TextureMode filter names, applied to new uploads
+and re-applied live to every mipmapped texture. The port's default is
+trilinear (GL_LINEAR_MIPMAP_LINEAR), not id's GL_LINEAR_MIPMAP_NEAREST.
+================
+*/
+typedef struct
+{
+	const char	*name;
+	GLint		minimize, maximize;
+} glmode_t;
+
+static const glmode_t gl3_texturemodes[] = {
+	{ "GL_NEAREST", GL_NEAREST, GL_NEAREST },
+	{ "GL_LINEAR", GL_LINEAR, GL_LINEAR },
+	{ "GL_NEAREST_MIPMAP_NEAREST", GL_NEAREST_MIPMAP_NEAREST, GL_NEAREST },
+	{ "GL_LINEAR_MIPMAP_NEAREST", GL_LINEAR_MIPMAP_NEAREST, GL_LINEAR },
+	{ "GL_NEAREST_MIPMAP_LINEAR", GL_NEAREST_MIPMAP_LINEAR, GL_NEAREST },
+	{ "GL_LINEAR_MIPMAP_LINEAR", GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR },
+};
+
+static GLint	gl_filter_min = GL_LINEAR_MIPMAP_LINEAR;
+static GLint	gl_filter_max = GL_LINEAR;
+
+void GL3_TextureMode (const char *string)
+{
+	int		i;
+	image_t	*image;
+
+	for (i = 0; i < (int)(sizeof(gl3_texturemodes) / sizeof(gl3_texturemodes[0])); i++)
+	{
+		if (!Q_stricmp (gl3_texturemodes[i].name, (char *)string))
+			break;
+	}
+	if (i == sizeof(gl3_texturemodes) / sizeof(gl3_texturemodes[0]))
+	{
+		ri.Con_Printf (PRINT_ALL, "bad filter name: %s\n", string);
+		return;
+	}
+
+	gl_filter_min = gl3_texturemodes[i].minimize;
+	gl_filter_max = gl3_texturemodes[i].maximize;
+
+	// re-apply to everything mipmapped (pics/sky stay linear-clamped)
+	for (i = 0, image = gl3textures; i < numgl3textures; i++, image++)
+	{
+		if (!image->registration_sequence)
+			continue;
+		if (image->type == it_pic || image->type == it_sky)
+			continue;
+
+		glBindTexture (GL_TEXTURE_2D, image->texnum);
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, gl_filter_min);
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, gl_filter_max);
+	}
+	gl3state.currenttexture = -1;
+}
+
+/*
+================
 GL3_LoadPic
 
 Uploads an 8-bit indexed (bits==8) or already-RGBA (bits==32) image
@@ -697,8 +758,8 @@ image_t *GL3_LoadPic (char *name, byte *pic, int width, int height, imagetype_t 
 	{
 		// world/model textures: mipmapped and repeated
 		glGenerateMipmap (GL_TEXTURE_2D);
-		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, gl_filter_min);
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, gl_filter_max);
 		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 		if (gl_anisotropy && gl_anisotropy->value > 1)

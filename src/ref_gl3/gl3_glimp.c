@@ -154,6 +154,12 @@ void GL3_CheckWindowChanges (void)
 		gl_anisotropy->modified = false;
 		GL3_UpdateAnisotropy ();
 	}
+
+	if (gl_texturemode && gl_texturemode->modified)
+	{
+		gl_texturemode->modified = false;
+		GL3_TextureMode (gl_texturemode->string);
+	}
 }
 
 void GL3_ShutdownWindow (void)

@@ -226,6 +226,8 @@ void GL3_PushDlights (void)
 		gl_dynamic = ri.Cvar_Get ("gl_dynamic", "2", 0);
 	if (!gl_dynamic->value || !r_worldmodel)
 		return;
+	if (gl_flashblend && gl_flashblend->value)
+		return;		// dlights drawn as additive glow balls instead
 	if (gl_dynamic->value == 2)
 		return;		// per-pixel mode: no CPU lightmap rebuilds needed
 
@@ -254,6 +256,8 @@ void GL3_UploadDlights (const vec3_t move)
 		gl_dynamic = ri.Cvar_Get ("gl_dynamic", "2", 0);
 
 	n = (gl_dynamic->value == 2) ? r_newrefdef.num_dlights : 0;
+	if (gl_flashblend && gl_flashblend->value)
+		n = 0;		// dlights drawn as additive glow balls instead
 	if (n > MAX_DLIGHTS)
 		n = MAX_DLIGHTS;
 
@@ -1202,8 +1206,11 @@ void GL3_DrawBrushModel (entity_t *e, const float *viewproj)
 		return;
 
 	// dynamic lights on the bmodel's own subtree (world-space light origins,
-	// same approximation the original used for moving models)
-	if (gl_dynamic && gl_dynamic->value)
+	// same approximation the original used for moving models). CPU lightmap
+	// mode only: per-pixel mode lights bmodels in the shader (marking here
+	// would double-apply), and flashblend draws glow balls instead
+	if (gl_dynamic && gl_dynamic->value == 1
+		&& !(gl_flashblend && gl_flashblend->value))
 	{
 		dlight_t	*lt = r_newrefdef.dlights;
 		for (i = 0; i < r_newrefdef.num_dlights; i++, lt++)
