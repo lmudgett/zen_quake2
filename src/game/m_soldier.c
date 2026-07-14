@@ -1145,6 +1145,8 @@ void soldier_die (edict_t *self, edict_t *inflictor, edict_t *attacker, int dama
 {
 	int		n;
 
+	self->s.effects &= ~EF_GUNGLOW_BLUE;	// no glowing corpses
+
 // check for gib
 	if (self->health <= self->gib_health)
 	{
@@ -1254,6 +1256,7 @@ void SP_monster_soldier_light (edict_t *self)
 	self->s.skinnum = 0;
 	self->health = 20;
 	self->gib_health = -30;
+	self->s.effects |= EF_GUNGLOW_BLUE;
 }
 
 /*QUAKED monster_soldier (1 .5 0) (-16 -16 -24) (16 16 32) Ambush Trigger_Spawn Sight

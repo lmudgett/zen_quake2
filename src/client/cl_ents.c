@@ -1140,6 +1140,19 @@ void CL_AddPacketEntities (frame_t *frame)
 		// add automatic particle trails
 		if ( (effects&~EF_ROTATE) )
 		{
+			if (effects & EF_GUNGLOW_BLUE)
+			{	// idle blue glow riding on a monster's blaster
+				vec3_t	fwd, right, gun;
+				float	pulse;
+
+				AngleVectors (ent.angles, fwd, right, NULL);
+				VectorMA (ent.origin, monster_flash_offset[MZ2_SOLDIER_BLASTER_1][0], fwd, gun);
+				VectorMA (gun, monster_flash_offset[MZ2_SOLDIER_BLASTER_1][1], right, gun);
+				gun[2] += monster_flash_offset[MZ2_SOLDIER_BLASTER_1][2];
+				pulse = 80 + 12 * sin (cl.time / 280.0);
+				V_AddLight (gun, pulse, 0.25, 0.5, 1.0);
+			}
+
 			if (effects & EF_ROCKET)
 			{
 				CL_RocketTrail (cent->lerp_origin, ent.origin, cent);
