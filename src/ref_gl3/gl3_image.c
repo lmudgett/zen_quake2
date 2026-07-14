@@ -168,10 +168,12 @@ static void LoadTGA (char *name, byte **pic, int *width, int *height)
 	int			row, column;
 	byte		*buf_p;
 	byte		*buffer;
+	byte		*buf_end;
 	TargaHeader	targa_header;
 	byte		*targa_rgba;
 	byte		tmp[2];
 	int			length;
+	int			bytesPerPixel;
 
 	*pic = NULL;
 
@@ -243,14 +245,29 @@ static void LoadTGA (char *name, byte **pic, int *width, int *height)
 	if (height)
 		*height = rows;
 
-	targa_rgba = malloc (numPixels * 4);
-	*pic = targa_rgba;
+	targa_rgba = calloc (numPixels, 4);	// zero-init: a truncated RLE image
+	*pic = targa_rgba;					// leaves no uninitialised heap in the texture
+
+	buf_end = buffer + length;			// input over-read guard for the decode
 
 	if (targa_header.id_length != 0)
 		buf_p += targa_header.id_length;	// skip TARGA image comment
 
+	bytesPerPixel = targa_header.pixel_size / 8;	// 3 or 4 (validated above)
+
 	if (targa_header.image_type == 2)
 	{	// Uncompressed, RGB images
+		// the whole pixel payload must lie within the file (buf_p is past the
+		// header + id field; numPixels*bytesPerPixel can't overflow since the
+		// dimensions are bounded above)
+		if ((long long)numPixels * bytesPerPixel > buf_end - buf_p)
+		{
+			ri.Con_Printf (PRINT_ALL, "LoadTGA: %s is truncated\n", name);
+			free (targa_rgba);
+			*pic = NULL;
+			ri.FS_FreeFile (buffer);
+			return;
+		}
 		for (row = rows - 1; row >= 0; row--)
 		{
 			pixbuf = targa_rgba + row * columns * 4;
@@ -291,10 +308,14 @@ static void LoadTGA (char *name, byte **pic, int *width, int *height)
 			pixbuf = targa_rgba + row * columns * 4;
 			for (column = 0; column < columns; )
 			{
+				if (buf_p >= buf_end)
+					goto breakOut;			// truncated input
 				packetHeader = *buf_p++;
 				packetSize = 1 + (packetHeader & 0x7f);
 				if (packetHeader & 0x80)
 				{	// run-length packet
+					if (buf_p + bytesPerPixel > buf_end)
+						goto breakOut;
 					switch (targa_header.pixel_size)
 					{
 					case 24:
@@ -331,6 +352,8 @@ static void LoadTGA (char *name, byte **pic, int *width, int *height)
 				}
 				else
 				{	// non run-length packet
+					if (buf_p + (int)packetSize * bytesPerPixel > buf_end)
+						goto breakOut;
 					for (j = 0; j < packetSize; j++)
 					{
 						switch (targa_header.pixel_size)

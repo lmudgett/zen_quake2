@@ -309,6 +309,20 @@ wavinfo_t GetWavinfo (char *name, byte *wav, int wavlength)
 	data_p += 4+2;
 	info.width = GetLittleShort() / 8;
 
+	// reject formats that would divide-by-zero or blow up the allocation below
+	if (info.width != 1 && info.width != 2)
+	{
+		Com_Printf("%s has an unsupported sample width\n", name);
+		memset (&info, 0, sizeof(info));
+		return info;
+	}
+	if (info.rate <= 0)
+	{
+		Com_Printf("%s has a bad sample rate\n", name);
+		memset (&info, 0, sizeof(info));
+		return info;
+	}
+
 // get cue chunk
 	FindChunk("cue ");
 	if (data_p)
@@ -319,7 +333,7 @@ wavinfo_t GetWavinfo (char *name, byte *wav, int wavlength)
 
 	// if the next chunk is a LIST chunk, look for a cue length marker
 		FindNextChunk ("LIST");
-		if (data_p)
+		if (data_p && data_p + 32 <= iff_end)
 		{
 			if (!strncmp (data_p + 28, "mark", 4))
 			{	// this is not a proper parse, but it works with cooledit...
@@ -342,7 +356,12 @@ wavinfo_t GetWavinfo (char *name, byte *wav, int wavlength)
 	}
 
 	data_p += 4;
-	samples = GetLittleLong () / info.width;
+	i = GetLittleLong ();		// data chunk length in bytes
+	// the sample payload must lie within the loaded file, or ResampleSfx
+	// (reading data + dataofs) would run past the buffer
+	if (i < 0 || data_p > iff_end || i > iff_end - data_p)
+		Com_Error (ERR_DROP, "Sound %s has a bad data chunk length", name);
+	samples = i / info.width;
 
 	if (info.samples)
 	{

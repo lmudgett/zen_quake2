@@ -1179,6 +1179,11 @@ static void Mod_LoadSpriteModel (model_t *mod, void *buffer)
 	sprin = (dsprite_t *)buffer;
 	sprout = Hunk_Alloc (modfilelen);
 
+	// the fixed header (ident/version/numframes, i.e. dsprite_t minus its
+	// frames[1]) must be present before we read those fields
+	if (modfilelen < (int)(sizeof(dsprite_t) - sizeof(dsprframe_t)))
+		ri.Sys_Error (ERR_DROP, "%s is not a valid sprite", mod->name);
+
 	sprout->ident = LittleLong (sprin->ident);
 	sprout->version = LittleLong (sprin->version);
 	sprout->numframes = LittleLong (sprin->numframes);
@@ -1187,9 +1192,15 @@ static void Mod_LoadSpriteModel (model_t *mod, void *buffer)
 		ri.Sys_Error (ERR_DROP, "%s has wrong version number (%i should be %i)",
 				 mod->name, sprout->version, SPRITE_VERSION);
 
-	if (sprout->numframes > MAX_MD2SKINS)
+	if (sprout->numframes < 0 || sprout->numframes > MAX_MD2SKINS)
 		ri.Sys_Error (ERR_DROP, "%s has too many frames (%i > %i)",
 				 mod->name, sprout->numframes, MAX_MD2SKINS);
+
+	// the numframes frame records must lie within the file we loaded
+	if ((long long)(sizeof(dsprite_t) - sizeof(dsprframe_t))
+			+ (long long)sprout->numframes * sizeof(dsprframe_t) > modfilelen)
+		ri.Sys_Error (ERR_DROP, "%s is too small for %i frames",
+				 mod->name, sprout->numframes);
 
 	// byte swap everything
 	for (i=0 ; i<sprout->numframes ; i++)
