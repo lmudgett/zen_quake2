@@ -248,7 +248,8 @@ char *Sys_GetClipboardData (void)
 	if (cliptext && cliptext[0])
 	{
 		data = malloc (strlen(cliptext) + 1);
-		strcpy (data, cliptext);
+		if (data)
+			strcpy (data, cliptext);
 	}
 	SDL_free (cliptext);
 

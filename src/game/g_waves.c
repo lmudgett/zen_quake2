@@ -5,7 +5,7 @@
 // each time it is defeated. Runs in deathmatch mode (players respawn, DM maps
 // are a clean canvas); the wave_active flag keeps monsters from self-deleting.
 //
-// Start it by typing "wave" in the console during a deathmatch game.
+// Start it by typing "nemesis" in the console during a deathmatch game.
 
 #include "g_local.h"
 
@@ -392,7 +392,7 @@ void Wave_RunFrame (void)
 	}
 }
 
-// console command: "wave"
+// console command: "nemesis"
 void Wave_Start (edict_t *ent)
 {
 	if (!deathmatch->value)

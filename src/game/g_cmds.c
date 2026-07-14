@@ -939,8 +939,8 @@ void ClientCommand (edict_t *ent)
 		Cmd_Help_f (ent);
 		return;
 	}
-	if (Q_stricmp (cmd, "wave") == 0)
-	{
+	if (Q_stricmp (cmd, "nemesis") == 0)
+	{	// start/advance the nemesis wave mode (deathmatch only, checked inside)
 		Wave_Start (ent);
 		return;
 	}

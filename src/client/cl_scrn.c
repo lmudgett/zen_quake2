@@ -1286,7 +1286,7 @@ void SCR_UpdateScreen (void)
 		return;				// not initialized yet
 
 	/*
-	** range check cl_camera_separation so we don't inadvertently fry someone's
+	** range check cl_stereo_separation so we don't inadvertently fry someone's
 	** brain (id capped at 1.0 for hardware stereo; the anaglyph composite
 	** wants roughly true-scale eye distance, ~2.5 units at 1 unit/inch)
 	*/

@@ -151,7 +151,7 @@ void VID_MenuInit (void)
 	if (!gl_anisotropy)		gl_anisotropy = Cvar_Get ("gl_anisotropy", "8", CVAR_ARCHIVE);
 	if (!gl_renderscale)	gl_renderscale = Cvar_Get ("gl_renderscale", "1", CVAR_ARCHIVE);
 	if (!gl_bloom)			gl_bloom = Cvar_Get ("gl_bloom", "0.4", CVAR_ARCHIVE);
-	if (!gl_dynamic)		gl_dynamic = Cvar_Get ("gl_dynamic", "2", 0);
+	if (!gl_dynamic)		gl_dynamic = Cvar_Get ("gl_dynamic", "2", CVAR_ARCHIVE);
 	if (!gl_bump)			gl_bump = Cvar_Get ("gl_bump", "2", CVAR_ARCHIVE);
 	if (!gl_shadows)		gl_shadows = Cvar_Get ("gl_shadows", "1", CVAR_ARCHIVE);
 	if (!gl_retexture)		gl_retexture = Cvar_Get ("gl_retexture", "1", CVAR_ARCHIVE);
