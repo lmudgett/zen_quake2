@@ -259,9 +259,10 @@ void CL_PrepRefresh (void)
 	SCR_AddDirtyPoint (0, 0);
 	SCR_AddDirtyPoint (viddef.width-1, viddef.height-1);
 
-	// let the render dll load the map
-	strcpy (mapname, cl.configstrings[CS_MODELS+1] + 5);	// skip "maps/"
-	mapname[strlen(mapname)-4] = 0;		// cut off ".bsp"
+	// let the render dll load the map (configstring is server-controlled)
+	Q_strlcpy (mapname, cl.configstrings[CS_MODELS+1] + 5, sizeof(mapname));	// skip "maps/"
+	if (strlen(mapname) >= 4)
+		mapname[strlen(mapname)-4] = 0;		// cut off ".bsp"
 
 	// register models, pics, and skins
 	Com_Printf ("Map: %s\r", mapname); 
@@ -282,7 +283,7 @@ void CL_PrepRefresh (void)
 
 	for (i=1 ; i<MAX_MODELS && cl.configstrings[CS_MODELS+i][0] ; i++)
 	{
-		strcpy (name, cl.configstrings[CS_MODELS+i]);
+		Q_strlcpy (name, cl.configstrings[CS_MODELS+i], sizeof(name));
 		name[37] = 0;	// never go beyond one line
 		if (name[0] != '*')
 			Com_Printf ("%s\r", name); 

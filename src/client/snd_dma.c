@@ -650,7 +650,7 @@ struct sfx_s *S_RegisterSexedSound (entity_state_t *ent, char *base)
 		if (p)
 		{
 			p += 1;
-			strcpy(model, p);
+			Q_strlcpy(model, p, sizeof(model));
 			p = strchr(model, '/');
 			if (p)
 				*p = 0;

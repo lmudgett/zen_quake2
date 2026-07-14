@@ -1245,13 +1245,13 @@ void CL_RequestNextDownload (void)
 					p++;
 				else
 					p = cl.configstrings[CS_PLAYERSKINS+i];
-				strcpy(model, p);
+				Q_strlcpy(model, p, sizeof(model));
 				p = strchr(model, '/');
 				if (!p)
 					p = strchr(model, '\\');
 				if (p) {
 					*p++ = 0;
-					strcpy(skin, p);
+					Q_strlcpy(skin, p, sizeof(skin));
 				} else
 					*skin = 0;
 
