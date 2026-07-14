@@ -219,14 +219,34 @@ static void GL3_RenderFrame (refdef_t *fd)
 	glActiveTexture (GL_TEXTURE0);
 
 	GL3_SetFrustum ();
-	GL3_MarkLeaves ();
-	GL3_PushDlights ();
-	GL3_DrawSkyBox (gl3_viewproj, r_newrefdef.vieworg);	// background, before the world
-	GL3_DrawWorld ();
-	GL3_DrawWater (gl3_viewproj, r_newrefdef.time);
-	GL3_DrawEntities ();
-	GL3_DrawWorldTranslucent ();		// glass / force fields, blended
-	GL3_DrawParticles (gl3_viewproj);
+
+	if (r_newrefdef.rdflags & RDF_NOWORLDMODEL)
+	{
+		// no-world scene (player-setup preview): id clears the sub-view to
+		// grey and draws no sky or world, just the entities
+		glEnable (GL_SCISSOR_TEST);
+		glScissor (r_newrefdef.x * gl3state.scale,
+			gl3state.height - (r_newrefdef.y + r_newrefdef.height) * gl3state.scale,
+			r_newrefdef.width * gl3state.scale, r_newrefdef.height * gl3state.scale);
+		glClearColor (0.3f, 0.3f, 0.3f, 1.0f);
+		glClear (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glClearColor (0.0f, 0.0f, 0.0f, 1.0f);
+		glDisable (GL_SCISSOR_TEST);
+
+		GL3_DrawEntities ();
+	}
+	else
+	{
+		GL3_MarkLeaves ();
+		GL3_PushDlights ();
+		GL3_DrawSkyBox (gl3_viewproj, r_newrefdef.vieworg);	// background, before the world
+		GL3_DrawWorld ();
+		GL3_DrawWater (gl3_viewproj, r_newrefdef.time);
+		GL3_DrawEntities ();
+		GL3_DrawParticles (gl3_viewproj);	// id: particles BEFORE alpha
+											// surfaces, so glass tints them
+		GL3_DrawWorldTranslucent ();		// glass / force fields, blended
+	}
 
 	GL3_SetLightLevel ();
 

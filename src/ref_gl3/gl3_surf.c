@@ -14,7 +14,7 @@ int		c_brush_polys;
 int		r_framecount = 1;
 int		r_visframecount;
 
-static cvar_t	*gl_modulate;
+cvar_t	*gl_modulate;		// also read by R_LightPoint (gl3_mesh.c)
 static cvar_t	*r_novis;
 static cvar_t	*r_nocull;
 
@@ -249,8 +249,10 @@ static void R_BuildLightMap (msurface_t *surf, byte *dest, int stride)
 
 	if (!surf->samples)
 	{
+		// fullbright: id skips the dynamic-light add entirely (goto store)
 		for (i = 0; i < size * 3; i++)
 			s_blocklights[i] = 255;
+		goto store;
 	}
 	else
 	{
@@ -285,6 +287,7 @@ static void R_BuildLightMap (msurface_t *surf, byte *dest, int stride)
 	if (surf->dlightframe == r_framecount)
 		R_AddDynamicLights (surf);
 
+store:
 	// store as RGBA, rescaling if the brightest channel exceeds 255
 	stride -= smax * 4;
 	bl = s_blocklights;
@@ -383,11 +386,17 @@ void GL3_EndBuildingLightmaps (void)
 // stay valid; binds the dynamic page on unit 1
 static void GL3_UpdateDynamicLightmap (msurface_t *surf)
 {
-	static byte	scratch[18 * 18 * LIGHTMAP_BYTES];	// extents cap at 16 blocks + 1
+	static byte	scratch[34 * 34 * LIGHTMAP_BYTES];	// id tolerates up to 33x33 blocks
+	byte		cached[MAXLIGHTMAPS];
 	int			smax = (surf->extents[0] >> 4) + 1;
 	int			tmax = (surf->extents[1] >> 4) + 1;
 
+	// a dlight-frame rebuild must not update the style cache: id only caches
+	// on the persistent path, else a style toggle landing on a dlit frame is
+	// absorbed and the static page never refreshes
+	memcpy (cached, surf->cached_light, sizeof(cached));
 	R_BuildLightMap (surf, scratch, smax * LIGHTMAP_BYTES);
+	memcpy (surf->cached_light, cached, sizeof(cached));
 
 	glActiveTexture (GL_TEXTURE1);
 	glBindTexture (GL_TEXTURE_2D, gl3_lightmap_dyn);
@@ -414,7 +423,7 @@ static qboolean GL3_LightstylesChanged (msurface_t *surf)
 // valid until the style changes again); leaves that page bound on unit 1
 static void GL3_UpdateStaticLightmap (msurface_t *surf)
 {
-	static byte	scratch[18 * 18 * LIGHTMAP_BYTES];
+	static byte	scratch[34 * 34 * LIGHTMAP_BYTES];
 	int			smax = (surf->extents[0] >> 4) + 1;
 	int			tmax = (surf->extents[1] >> 4) + 1;
 
@@ -714,8 +723,8 @@ static void R_RecursiveWorldNode (mnode_t *node)
 
 // ------------------------------------------------------------------ draw
 
-// step the animation chain by the entity's frame (world uses frame 0),
-// matching R_TextureAnimation
+// step the animation chain by the entity's frame, matching R_TextureAnimation.
+// The world animates at 2 Hz: id sets its worldspawn entity frame to time*2
 static image_t *GL3_TextureAnimation (mtexinfo_t *tex, int frame)
 {
 	int	c;
@@ -744,6 +753,12 @@ static float GL3_FlowScroll (void)
 static float GL3_FlowScrollWarp (void)
 {
 	return -64.0f * ((r_newrefdef.time * 0.5f) - (int)(r_newrefdef.time * 0.5f));
+}
+
+// the world's texture-animation frame (R_DrawWorld: ent.frame = time*2)
+static int GL3_WorldFrame (void)
+{
+	return (int)(r_newrefdef.time * 2);
 }
 
 void GL3_DrawWorld (void)
@@ -777,7 +792,7 @@ void GL3_DrawWorld (void)
 		if (surf->texinfo && (surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66)))
 			continue;			// translucent surfaces drawn in a later pass
 
-		img = surf->texinfo ? GL3_TextureAnimation (surf->texinfo, 0) : NULL;
+		img = surf->texinfo ? GL3_TextureAnimation (surf->texinfo, GL3_WorldFrame ()) : NULL;
 		if (!img)
 			img = r_notexture;
 
@@ -896,7 +911,7 @@ void GL3_DrawWater (const float *viewproj, float time)
 		glUniform1f (gl3_prog_warp.u_scroll,
 			(surf->texinfo && (surf->texinfo->flags & SURF_FLOWING)) ? GL3_FlowScrollWarp () : 0.0f);
 
-		img = surf->texinfo ? surf->texinfo->image : NULL;
+		img = surf->texinfo ? GL3_TextureAnimation (surf->texinfo, GL3_WorldFrame ()) : NULL;
 		if (!img)
 			img = r_notexture;
 		GL3_Bind (img->texnum);
@@ -946,7 +961,7 @@ void GL3_DrawWorldTranslucent (void)
 		glUniform1f (gl3_prog3d.u_alpha,
 			(surf->texinfo->flags & SURF_TRANS33) ? 0.33f : 0.66f);
 
-		img = GL3_TextureAnimation (surf->texinfo, 0);
+		img = GL3_TextureAnimation (surf->texinfo, GL3_WorldFrame ());
 		if (!img)
 			img = r_notexture;
 		GL3_Bind (img->texnum);
@@ -982,7 +997,9 @@ void GL3_DrawWorldTranslucent (void)
 		glUniform1f (gl3_prog_warp.u_scroll,
 			(surf->texinfo && (surf->texinfo->flags & SURF_FLOWING)) ? GL3_FlowScrollWarp () : 0.0f);
 
-		img = surf->texinfo->image ? surf->texinfo->image : r_notexture;
+		img = surf->texinfo ? GL3_TextureAnimation (surf->texinfo, GL3_WorldFrame ()) : NULL;
+		if (!img)
+			img = r_notexture;
 		GL3_Bind (img->texnum);
 
 		for (p = surf->polys; p; p = p->next)
@@ -994,8 +1011,10 @@ void GL3_DrawWorldTranslucent (void)
 	glDisable (GL_BLEND);
 }
 
-// draw a single world surface (diffuse + lightmap) -- used for inline bmodels
-static void GL3_DrawSurface (msurface_t *surf, int frame)
+// draw a single world surface (diffuse + lightmap) -- used for inline bmodels.
+// entalpha < 1 blends the surface at that alpha regardless of texinfo
+// (RF_TRANSLUCENT bmodels draw whole at 0.25, R_DrawInlineBModel)
+static void GL3_DrawSurface (msurface_t *surf, int frame, float entalpha)
 {
 	image_t		*img;
 	glpoly_t	*p;
@@ -1030,14 +1049,16 @@ static void GL3_DrawSurface (msurface_t *surf, int frame)
 	GL3_Bind (img->texnum);
 
 	// translucent bmodel surfaces (glass doors etc.) blend in place
-	trans = surf->texinfo && (surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66));
+	trans = entalpha < 1.0f
+		|| (surf->texinfo && (surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66)));
 	if (trans)
 	{
 		glEnable (GL_BLEND);
 		glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		glDepthMask (GL_FALSE);
 		glUniform1f (gl3_prog3d.u_alpha,
-			(surf->texinfo->flags & SURF_TRANS33) ? 0.33f : 0.66f);
+			entalpha < 1.0f ? entalpha
+				: (surf->texinfo->flags & SURF_TRANS33) ? 0.33f : 0.66f);
 	}
 
 	for (p = surf->polys; p; p = p->next)
@@ -1112,13 +1133,16 @@ void GL3_DrawBrushModel (entity_t *e, const float *viewproj)
 	glUniformMatrix4fv (gl3_prog3d.u_mvp, 1, GL_FALSE, mvp);
 	glBindVertexArray (world_vao);
 
+	// RF_TRANSLUCENT bmodels (ghost doors/platforms) blend whole at 0.25
+	float entalpha = (e->flags & RF_TRANSLUCENT) ? 0.25f : 1.0f;
+
 	surf = r_worldmodel->surfaces + mod->firstmodelsurface;
 	for (i = 0; i < mod->nummodelsurfaces; i++, surf++)
 	{
 		if (surf->flags & SURF_DRAWTURB)
 			numturb++;
 		else
-			GL3_DrawSurface (surf, e->frame);
+			GL3_DrawSurface (surf, e->frame, entalpha);
 	}
 
 	// water brushes (func_water etc.) need the warp shader with this
@@ -1144,16 +1168,17 @@ void GL3_DrawBrushModel (entity_t *e, const float *viewproj)
 			glUniform1f (gl3_prog_warp.u_scroll,
 				(surf->texinfo && (surf->texinfo->flags & SURF_FLOWING)) ? GL3_FlowScrollWarp () : 0.0f);
 
-			trans = GL3_TurbTranslucent (surf);
+			trans = entalpha < 1.0f || GL3_TurbTranslucent (surf);
 			if (trans)
 			{
 				glEnable (GL_BLEND);
 				glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 				glDepthMask (GL_FALSE);
-				glUniform1f (gl3_prog_warp.u_alpha, GL3_TurbAlpha (surf));
+				glUniform1f (gl3_prog_warp.u_alpha,
+					entalpha < 1.0f ? entalpha : GL3_TurbAlpha (surf));
 			}
 
-			img = surf->texinfo ? surf->texinfo->image : NULL;
+			img = surf->texinfo ? GL3_TextureAnimation (surf->texinfo, e->frame) : NULL;
 			if (!img)
 				img = r_notexture;
 			GL3_Bind (img->texnum);

@@ -299,14 +299,17 @@ static int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 
 			for (maps = 0; maps < MAXLIGHTMAPS && surf->styles[maps] != 255; maps++)
 			{
+				float	modulate = gl_modulate ? gl_modulate->value : 1.0f;
+
 				if (r_newrefdef.lightstyles)
 				{
 					for (i = 0; i < 3; i++)
-						scale[i] = r_newrefdef.lightstyles[surf->styles[maps]].rgb[i];
+						scale[i] = modulate *
+							r_newrefdef.lightstyles[surf->styles[maps]].rgb[i];
 				}
 				else
 				{
-					scale[0] = scale[1] = scale[2] = 1.0f;
+					scale[0] = scale[1] = scale[2] = modulate;
 				}
 
 				pointcolor[0] += lightmap[0] * scale[0] * (1.0f / 255);
@@ -359,6 +362,11 @@ void R_LightPoint (vec3_t p, vec3_t color)
 		if (add > 0)
 			VectorMA (color, add, dl->color, color);
 	}
+
+	if (gl_modulate)
+		VectorScale (color, gl_modulate->value, color);	// id quirk: modulate
+														// applied again on top
+														// of the style factor
 }
 
 //===================================================================
@@ -519,22 +527,48 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 			| RF_SHELL_DOUBLE | RF_SHELL_HALF_DAM);
 
 	//
-	// lighting
+	// lighting (PMM's shell cascade, ported exactly from R_DrawAliasModel)
 	//
 	if (shell)
 	{
-		// flat shell colors (R_DrawAliasModel)
 		VectorClear (shadelight);
-		if (e->flags & RF_SHELL_RED)	shadelight[0] = 1.0f;
-		if (e->flags & RF_SHELL_GREEN)	shadelight[1] = 1.0f;
-		if (e->flags & RF_SHELL_BLUE)	shadelight[2] = 1.0f;
-		if (e->flags & RF_SHELL_DOUBLE)
-		{
-			shadelight[0] = 0.9f; shadelight[1] = 0.7f;
+		if ((e->flags & RF_SHELL_RED) && (e->flags & RF_SHELL_BLUE)
+			&& (e->flags & RF_SHELL_GREEN))
+		{	// special case for godmode
+			shadelight[0] = shadelight[1] = shadelight[2] = 1.0f;
 		}
-		if (e->flags & RF_SHELL_HALF_DAM)
+		else if (e->flags & (RF_SHELL_RED | RF_SHELL_BLUE | RF_SHELL_DOUBLE))
 		{
-			shadelight[0] = 0.56f; shadelight[1] = 0.59f; shadelight[2] = 0.45f;
+			if (e->flags & RF_SHELL_RED)
+			{
+				shadelight[0] = 1.0f;
+				if (e->flags & (RF_SHELL_BLUE | RF_SHELL_DOUBLE))
+					shadelight[2] = 1.0f;
+			}
+			else if (e->flags & RF_SHELL_BLUE)
+			{
+				if (e->flags & RF_SHELL_DOUBLE)
+				{
+					shadelight[1] = 1.0f;
+					shadelight[2] = 1.0f;
+				}
+				else
+					shadelight[2] = 1.0f;
+			}
+			else if (e->flags & RF_SHELL_DOUBLE)
+			{
+				shadelight[0] = 0.9f;
+				shadelight[1] = 0.7f;
+			}
+		}
+		else if (e->flags & (RF_SHELL_HALF_DAM | RF_SHELL_GREEN))
+		{
+			if (e->flags & RF_SHELL_HALF_DAM)
+			{
+				shadelight[0] = 0.56f; shadelight[1] = 0.59f; shadelight[2] = 0.45f;
+			}
+			if (e->flags & RF_SHELL_GREEN)
+				shadelight[1] = 1.0f;
 		}
 	}
 	else if (e->flags & RF_FULLBRIGHT)
@@ -544,15 +578,15 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 	else
 	{
 		R_LightPoint (e->origin, shadelight);
+	}
 
-		if (e->flags & RF_MINLIGHT)
-		{	// keep pickups visible in the dark
-			for (i = 0; i < 3; i++)
-				if (shadelight[i] > 0.1f)
-					break;
-			if (i == 3)
-				shadelight[0] = shadelight[1] = shadelight[2] = 0.1f;
-		}
+	if (e->flags & RF_MINLIGHT)
+	{	// keep pickups visible in the dark (id applies this to shells too)
+		for (i = 0; i < 3; i++)
+			if (shadelight[i] > 0.1f)
+				break;
+		if (i == 3)
+			shadelight[0] = shadelight[1] = shadelight[2] = 0.1f;
 	}
 
 	if (e->flags & RF_GLOW)
@@ -565,6 +599,14 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 			if (shadelight[i] < min)
 				shadelight[i] = min;
 		}
+	}
+
+	// PGM: ir goggles color override (Rogue)
+	if ((r_newrefdef.rdflags & RDF_IRGOGGLES) && (e->flags & RF_IR_VISIBLE))
+	{
+		shadelight[0] = 1.0f;
+		shadelight[1] = 0.0f;
+		shadelight[2] = 0.0f;
 	}
 
 	shadedots = r_avertexnormal_dots[
@@ -647,9 +689,11 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 			VectorCopy (s_lerped[index_xyz], rv->pos);
 			rv->st[0] = s;
 			rv->st[1] = t;
-			rv->color[0] = l * shadelight[0];
-			rv->color[1] = l * shadelight[1];
-			rv->color[2] = l * shadelight[2];
+			// id's fixed-function glColor clamps at 1.0; without the clamp
+			// lit sides blow out (shadedots peaks at ~2)
+			rv->color[0] = l * shadelight[0] > 1.0f ? 1.0f : l * shadelight[0];
+			rv->color[1] = l * shadelight[1] > 1.0f ? 1.0f : l * shadelight[1];
+			rv->color[2] = l * shadelight[2] > 1.0f ? 1.0f : l * shadelight[2];
 			rv->color[3] = alpha;
 		}
 
@@ -716,7 +760,9 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 	glUniformMatrix4fv (gl3_prog_alias.u_mvp, 1, GL_FALSE, mvp);
 	glUniform1f (gl3_prog_alias.u_gamma,
 		vid_gamma->value < 0.5f ? 0.5f : vid_gamma->value);
-	glUniform1f (gl3_prog_alias.u_intensity, gl_intensity->value);
+	// shells are untextured flat colour in id -- intensity would wash the
+	// hue out (DOUBLE's orange to yellow), so only skins get the boost
+	glUniform1f (gl3_prog_alias.u_intensity, shell ? 1.0f : gl_intensity->value);
 
 	if (shell || (e->flags & RF_TRANSLUCENT))
 	{

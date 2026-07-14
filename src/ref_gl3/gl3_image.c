@@ -369,6 +369,77 @@ Uploads an 8-bit indexed (bits==8) or already-RGBA (bits==32) image
 as a GL_RGBA8 texture and registers it in gl3textures[].
 ================
 */
+/*
+=================
+R_FloodFillSkin
+
+Fill background pixels so mipmapping doesn't have haloes
+=================
+*/
+
+typedef struct
+{
+	short		x, y;
+} floodfill_t;
+
+// must be a power of 2
+#define FLOODFILL_FIFO_SIZE 0x1000
+#define FLOODFILL_FIFO_MASK (FLOODFILL_FIFO_SIZE - 1)
+
+#define FLOODFILL_STEP( off, dx, dy ) \
+{ \
+	if (pos[off] == fillcolor) \
+	{ \
+		pos[off] = 255; \
+		fifo[inpt].x = x + (dx), fifo[inpt].y = y + (dy); \
+		inpt = (inpt + 1) & FLOODFILL_FIFO_MASK; \
+	} \
+	else if (pos[off] != 255) fdc = pos[off]; \
+}
+
+static void R_FloodFillSkin (byte *skin, int skinwidth, int skinheight)
+{
+	byte				fillcolor = *skin; // assume this is the pixel to fill
+	static floodfill_t	fifo[FLOODFILL_FIFO_SIZE];
+	int					inpt = 0, outpt = 0;
+	int					filledcolor = -1;
+	int					i;
+
+	if (filledcolor == -1)
+	{
+		filledcolor = 0;
+		// attempt to find opaque black
+		for (i = 0; i < 256; ++i)
+			if (d_8to24table[i] == (255 << 0)) // alpha 1.0
+			{
+				filledcolor = i;
+				break;
+			}
+	}
+
+	// can't fill to filled color or to transparent color (used as visited marker)
+	if ((fillcolor == filledcolor) || (fillcolor == 255))
+		return;
+
+	fifo[inpt].x = 0, fifo[inpt].y = 0;
+	inpt = (inpt + 1) & FLOODFILL_FIFO_MASK;
+
+	while (outpt != inpt)
+	{
+		int			x = fifo[outpt].x, y = fifo[outpt].y;
+		int			fdc = filledcolor;
+		byte		*pos = &skin[x + skinwidth * y];
+
+		outpt = (outpt + 1) & FLOODFILL_FIFO_MASK;
+
+		if (x > 0)				FLOODFILL_STEP( -1, -1, 0 );
+		if (x < skinwidth - 1)	FLOODFILL_STEP( 1, 1, 0 );
+		if (y > 0)				FLOODFILL_STEP( -skinwidth, 0, -1 );
+		if (y < skinheight - 1)	FLOODFILL_STEP( skinwidth, 0, 1 );
+		skin[x + skinwidth * y] = fdc;
+	}
+}
+
 image_t *GL3_LoadPic (char *name, byte *pic, int width, int height, imagetype_t type, int bits)
 {
 	image_t		*image;
@@ -406,13 +477,34 @@ image_t *GL3_LoadPic (char *name, byte *pic, int width, int height, imagetype_t 
 
 	if (bits == 8)
 	{
+		// skins: fill the background color so mipmap averaging doesn't halo
+		if (type == it_skin)
+			R_FloodFillSkin (pic, width, height);
+
 		// expand each palette index into RGBA
 		for (i = 0; i < s; i++)
 		{
 			int p = pic[i];
 			rgba[i] = d_8to24table[p];
 			if (p == 255)
-				image->has_alpha = true;	// transparent index
+			{	// transparent, so scan around for another color
+				// to avoid alpha fringes when filtering/mipmapping
+				image->has_alpha = true;
+				if (i > width && pic[i - width] != 255)
+					p = pic[i - width];
+				else if (i < s - width && pic[i + width] != 255)
+					p = pic[i + width];
+				else if (i > 0 && pic[i - 1] != 255)
+					p = pic[i - 1];
+				else if (i < s - 1 && pic[i + 1] != 255)
+					p = pic[i + 1];
+				else
+					p = 0;
+				// copy rgb components, keep alpha 0
+				((byte *)&rgba[i])[0] = ((byte *)&d_8to24table[p])[0];
+				((byte *)&rgba[i])[1] = ((byte *)&d_8to24table[p])[1];
+				((byte *)&rgba[i])[2] = ((byte *)&d_8to24table[p])[2];
+			}
 		}
 	}
 	else
@@ -443,6 +535,15 @@ image_t *GL3_LoadPic (char *name, byte *pic, int width, int height, imagetype_t 
 		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	}
+	else if (type == it_sky)
+	{
+		// skies: no mipmaps (id never mips them; minified mips defeat the
+		// 1/512 seam inset) and clamped so face edges never wrap around
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	}
 	else
 	{
 		// world/model textures: mipmapped and repeated
@@ -456,6 +557,35 @@ image_t *GL3_LoadPic (char *name, byte *pic, int width, int height, imagetype_t 
 	free (rgba);
 
 	return image;
+}
+
+/*
+================
+GL3_FreeUnusedImages
+
+Any image that was not touched by this registration sequence
+will be freed (pics persist for the session, like the original).
+================
+*/
+void GL3_FreeUnusedImages (void)
+{
+	int		i;
+	image_t	*image;
+
+	for (i = 0, image = gl3textures; i < numgl3textures; i++, image++)
+	{
+		if (image->registration_sequence == registration_sequence)
+			continue;		// used this sequence
+		if (!image->registration_sequence)
+			continue;		// free slot
+		if (image->type == it_pic)
+			continue;		// pics (HUD/menu) live for the whole session
+
+		glDeleteTextures (1, &image->texnum);
+		if (gl3state.currenttexture == (int)image->texnum)
+			gl3state.currenttexture = -1;
+		memset (image, 0, sizeof(*image));
+	}
 }
 
 /*

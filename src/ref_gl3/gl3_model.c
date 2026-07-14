@@ -1335,8 +1335,7 @@ void GL3_EndRegistration (void)
 		}
 	}
 
-	// The original also frees unused images here (GL_FreeUnusedImages); the
-	// gl3 image manager does not expose that yet, so it is omitted.
+	GL3_FreeUnusedImages ();
 
 	// upload all world geometry to the GPU now that registration is done
 	GL3_BuildWorldVBO ();

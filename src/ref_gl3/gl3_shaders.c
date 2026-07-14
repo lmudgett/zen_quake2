@@ -140,7 +140,9 @@ static const char *fragAlias =
 	"void main() {\n"
 	"    vec4 t = texture(u_tex, v_uv);\n"
 	"    if (t.a * v_color.a < u_alphacut) discard;\n"
-	"    vec3 c = t.rgb * v_color.rgb * u_intensity;\n"
+	// id boosts skins by intensity at UPLOAD, clamped to 255 -- clamp the
+	// boosted texel before modulating by vertex light like fixed function did
+	"    vec3 c = min(t.rgb * u_intensity, 1.0) * v_color.rgb;\n"
 	"    c = pow(c, vec3(u_gamma));\n"
 	"    frag = vec4(c, t.a * v_color.a);\n"
 	"}\n";

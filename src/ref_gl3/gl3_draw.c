@@ -51,6 +51,11 @@ void GL3_Draw_Init (void)
 	draw_chars = GL3_FindImage ("pics/conchars.pcx", it_pic);
 	if (!draw_chars)
 		ri.Sys_Error (ERR_FATAL, "GL3_Draw_Init: couldn't load pics/conchars.pcx");
+
+	// id: "don't bilerp characters" -- keeps text crisp under UI scaling
+	GL3_Bind (draw_chars->texnum);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 }
 
 void GL3_Draw_Shutdown (void)
@@ -209,8 +214,10 @@ void GL3_Draw_TileClear (int x, int y, int w, int h, char *name)
 	image_t	*img = GL3_Draw_FindPic (name);
 	if (!img)
 		return;
-	// tile at the source resolution by repeating uv (image is CLAMP, so this
-	// approximates the fill; the console backdrop is the main user)
+	// the backtile must repeat; pics load clamped, so flip this one to REPEAT
+	GL3_Bind (img->texnum);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 	GL3_DrawQuad (img->texnum, (float)x, (float)y, (float)w, (float)h,
 		x / 64.0f, y / 64.0f, (x + w) / 64.0f, (y + h) / 64.0f, 1, 1, 1, 1);
 }
@@ -219,8 +226,12 @@ void GL3_Draw_Fill (int x, int y, int w, int h, int c)
 {
 	byte	*rgba = (byte *)&d_8to24table[c & 255];
 
+	// id draws the raw palette color (no intensity; gamma still applies
+	// since id's hardware ramp affected everything on screen)
+	glUniform1f (gl3_prog2d.u_intensity, 1.0f);
 	GL3_DrawQuad (white_tex, (float)x, (float)y, (float)w, (float)h, 0, 0, 1, 1,
 		rgba[0] / 255.0f, rgba[1] / 255.0f, rgba[2] / 255.0f, 1.0f);
+	glUniform1f (gl3_prog2d.u_intensity, gl_intensity ? gl_intensity->value : 1.0f);
 }
 
 void GL3_Draw_FadeScreen (void)
@@ -230,19 +241,17 @@ void GL3_Draw_FadeScreen (void)
 }
 
 // full-screen colour wash (damage/pickup/underwater), from refdef.blend.
-// Draws the literal colour (intensity/gamma neutralised, then restored so the
-// HUD the client draws afterwards keeps correct brightness).
+// id draws the literal colour with no intensity, but its hardware gamma ramp
+// still applied -- so neutralise intensity only and keep gamma.
 void GL3_Draw_PolyBlend (float r, float g, float b, float a)
 {
 	if (a <= 0.0f)
 		return;
 
 	glUniform1f (gl3_prog2d.u_intensity, 1.0f);
-	glUniform1f (gl3_prog2d.u_gamma, 1.0f);
 	GL3_DrawQuad (white_tex, 0, 0, (float)gl3state.vw, (float)gl3state.vh,
 		0, 0, 1, 1, r, g, b, a);
 	glUniform1f (gl3_prog2d.u_intensity, gl_intensity ? gl_intensity->value : 1.0f);
-	glUniform1f (gl3_prog2d.u_gamma, (vid_gamma && vid_gamma->value >= 0.5f) ? vid_gamma->value : 1.0f);
 }
 
 void GL3_Draw_StretchRaw (int x, int y, int w, int h, int cols, int rows, byte *data)
@@ -276,6 +285,8 @@ void GL3_Draw_StretchRaw (int x, int y, int w, int h, int cols, int rows, byte *
 	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+	// cinematic pixels are shown untouched in id (raw palette, no intensity)
+	glUniform1f (gl3_prog2d.u_intensity, 1.0f);
 	glUniform4f (gl3_prog2d.u_color, 1, 1, 1, 1);
 	{
 		drawvert_t	v[6] = {
@@ -290,5 +301,6 @@ void GL3_Draw_StretchRaw (int x, int y, int w, int h, int cols, int rows, byte *
 		glBufferData (GL_ARRAY_BUFFER, sizeof(v), v, GL_STREAM_DRAW);
 		glDrawArrays (GL_TRIANGLES, 0, 6);
 	}
+	glUniform1f (gl3_prog2d.u_intensity, gl_intensity ? gl_intensity->value : 1.0f);
 	gl3state.currenttexture = -1;	// we changed raw_tex params
 }

@@ -61,6 +61,7 @@ void     GL3_InitImages (void);
 void     GL3_ShutdownImages (void);
 image_t *GL3_FindImage (char *name, imagetype_t type);
 image_t *GL3_LoadPic (char *name, byte *pic, int width, int height, imagetype_t type, int bits);
+void     GL3_FreeUnusedImages (void);
 void     GL3_ImageList_f (void);
 void     GL3_Bind (GLuint texnum);
 
@@ -134,6 +135,7 @@ extern cvar_t	*gl_intensity;
 extern cvar_t	*gl_wateralpha;
 extern cvar_t	*gl_slimealpha;
 extern cvar_t	*gl_2dscale;
+extern cvar_t	*gl_modulate;	// registered lazily in gl3_surf.c
 
 // gl3_glimp.c -- window / context management
 void     GL3_ShutdownWindow (void);
