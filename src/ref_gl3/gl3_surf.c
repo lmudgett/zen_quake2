@@ -223,7 +223,7 @@ void GL3_PushDlights (void)
 	dlight_t	*dl;
 
 	if (!gl_dynamic)
-		gl_dynamic = ri.Cvar_Get ("gl_dynamic", "1", 0);
+		gl_dynamic = ri.Cvar_Get ("gl_dynamic", "2", 0);
 	if (!gl_dynamic->value || !r_worldmodel)
 		return;
 	if (gl_dynamic->value == 2)
@@ -251,7 +251,7 @@ void GL3_UploadDlights (const vec3_t move)
 	int			i, n;
 
 	if (!gl_dynamic)
-		gl_dynamic = ri.Cvar_Get ("gl_dynamic", "1", 0);
+		gl_dynamic = ri.Cvar_Get ("gl_dynamic", "2", 0);
 
 	n = (gl_dynamic->value == 2) ? r_newrefdef.num_dlights : 0;
 	if (n > MAX_DLIGHTS)
@@ -806,6 +806,37 @@ static int GL3_WorldFrame (void)
 	return (int)(r_newrefdef.time * 2);
 }
 
+// bump is meaningful only when dynamic lights are per-pixel and present
+static qboolean GL3_BumpActive (void)
+{
+	return gl_bump && gl_bump->value
+		&& gl_dynamic && gl_dynamic->value == 2
+		&& r_newrefdef.num_dlights > 0;
+}
+
+// per-surface tangent basis for the bump path: the texinfo's texture axes
+// plus the plane normal (flipped for back-side surfaces)
+static void GL3_SetSurfTBN (msurface_t *surf, image_t *img)
+{
+	vec3_t	t, b, n;
+
+	VectorCopy (surf->texinfo->vecs[0], t);
+	VectorNormalize (t);
+	VectorCopy (surf->texinfo->vecs[1], b);
+	VectorNormalize (b);
+	VectorCopy (surf->plane->normal, n);
+	if (surf->flags & SURF_PLANEBACK)
+		VectorNegate (n, n);
+
+	glUniform3fv (gl3_prog3d.u_tbn_t, 1, t);
+	glUniform3fv (gl3_prog3d.u_tbn_b, 1, b);
+	glUniform3fv (gl3_prog3d.u_tbn_n, 1, n);
+
+	glActiveTexture (GL_TEXTURE2);
+	glBindTexture (GL_TEXTURE_2D, img->normaltex ? img->normaltex : gl3_flat_normal);
+	glActiveTexture (GL_TEXTURE0);
+}
+
 void GL3_DrawWorld (void)
 {
 	int		i;
@@ -822,6 +853,10 @@ void GL3_DrawWorld (void)
 
 	glUniform1f (gl3_prog3d.u_alpha, 1.0f);
 	GL3_UploadDlights (vec3_origin);	// per-pixel dlights (gl_dynamic 2)
+
+	int bump = GL3_BumpActive ();
+	glUniform1i (gl3_prog3d.u_bump, bump);
+
 	glBindVertexArray (world_vao);
 
 	surf = r_worldmodel->surfaces;
@@ -879,6 +914,9 @@ void GL3_DrawWorld (void)
 		}
 
 		GL3_Bind (img->texnum);		// diffuse on unit 0
+
+		if (bump)
+			GL3_SetSurfTBN (surf, img);	// normal map on unit 2
 
 		for (p = surf->polys; p; p = p->next)
 		{
@@ -1094,6 +1132,9 @@ static void GL3_DrawSurface (msurface_t *surf, int frame, float entalpha)
 		glActiveTexture (GL_TEXTURE0);
 	}
 	GL3_Bind (img->texnum);
+
+	if (GL3_BumpActive ())
+		GL3_SetSurfTBN (surf, img);		// normal map on unit 2
 
 	// translucent bmodel surfaces (glass doors etc.) blend in place
 	trans = entalpha < 1.0f

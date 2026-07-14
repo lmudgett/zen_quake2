@@ -31,6 +31,7 @@ typedef struct image_s
 	int			registration_sequence;	// free unreferenced images between maps
 	struct msurface_s	*texturechain;	// used by world rendering later
 	GLuint		texnum;					// GL texture object
+	GLuint		normaltex;				// tangent-space normal map (0 = none)
 	qboolean	has_alpha;
 } image_t;
 
@@ -51,6 +52,7 @@ typedef struct
 extern gl3state_t	gl3state;
 
 extern unsigned		d_8to24table[256];	// palette as RGBA
+extern GLuint		gl3_flat_normal;	// 1x1 "no bump" normal map
 extern image_t		gl3textures[MAX_GLTEXTURES];
 extern int			numgl3textures;
 extern int			registration_sequence;
@@ -93,6 +95,10 @@ typedef struct
 	GLint	u_num_dlights;	// gl_dynamic 2: per-pixel dynamic lights
 	GLint	u_dlights;		// vec4[32] xyz + radius
 	GLint	u_dlcolors;		// vec3[32]
+	GLint	u_bump;			// normal-mapped dlights on/off
+	GLint	u_tbn_t;		// per-surface tangent basis (texinfo axes)
+	GLint	u_tbn_b;
+	GLint	u_tbn_n;
 } gl3prog3d_t;
 
 extern gl3prog3d_t	gl3_prog3d;
@@ -143,6 +149,7 @@ extern cvar_t	*gl_modulate;	// registered lazily in gl3_surf.c
 extern cvar_t	*gl_anisotropy;
 extern cvar_t	*gl_shadows;		// soft blob shadows under entities
 extern cvar_t	*gl_retexture;		// hi-res .png/.tga/.jpg texture overrides
+extern cvar_t	*gl_bump;			// 0 off, 1 _n maps only, 2 + auto-generate
 extern cvar_t	*gl_msaa;			// gl3_post.c
 extern cvar_t	*gl_renderscale;
 extern cvar_t	*gl_bloom;

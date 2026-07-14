@@ -107,17 +107,31 @@ static const char *frag3d =
 	"uniform int u_num_dlights;\n"		// gl_dynamic 2: per-pixel dynamic lights
 	"uniform vec4 u_dlights[32];\n"		// xyz = origin (surface space), w = radius
 	"uniform vec3 u_dlcolors[32];\n"
+	"uniform sampler2D u_normalmap;\n"	// tangent-space normals (bump)
+	"uniform int u_bump;\n"
+	"uniform vec3 u_tbn_t;\n"			// per-surface texture axes + plane normal
+	"uniform vec3 u_tbn_b;\n"
+	"uniform vec3 u_tbn_n;\n"
 	"out vec4 frag;\n"
 	"void main() {\n"	// gamma applied once in the post pass, like id's ramp
 	"    vec4 diff = texture(u_tex, v_uv);\n"
 	"    vec3 c = diff.rgb * u_intensity;\n"
 	"    if (u_lm_enabled != 0) {\n"
 	"        vec3 light = texture(u_lightmap, v_lmuv).rgb * 2.0;\n"	// overbright
+	"        vec3 n = vec3(0.0);\n"
+	"        if (u_bump != 0 && u_num_dlights > 0) {\n"
+	"            vec3 nm = texture(u_normalmap, v_uv).rgb * 2.0 - 1.0;\n"
+	"            n = normalize(nm.x * u_tbn_t + nm.y * u_tbn_b + nm.z * u_tbn_n);\n"
+	"        }\n"
 	"        for (int i = 0; i < u_num_dlights; i++) {\n"
 	// smooth per-pixel falloff calibrated against id's lightmap formula
 	// ((radius - cutoff64 - dist) per 255 with the x2 overbright)
-	"            float d = distance(v_wpos, u_dlights[i].xyz);\n"
-	"            light += u_dlcolors[i] * max(u_dlights[i].w - 64.0 - d, 0.0) * (2.0 / 255.0);\n"
+	"            vec3 L = u_dlights[i].xyz - v_wpos;\n"
+	"            float d = length(L);\n"
+	"            float att = max(u_dlights[i].w - 64.0 - d, 0.0) * (2.0 / 255.0);\n"
+	"            if (u_bump != 0)\n"
+	"                att *= max(dot(n, L / max(d, 1.0)), 0.0) * 1.5 + 0.15;\n"	// keep a floor so grazing light still reads
+	"            light += u_dlcolors[i] * att;\n"
 	"        }\n"
 	"        c *= light;\n"
 	"    }\n"
@@ -265,10 +279,16 @@ void GL3_InitShaders (void)
 	gl3_prog3d.u_num_dlights = glGetUniformLocation (gl3_prog3d.program, "u_num_dlights");
 	gl3_prog3d.u_dlights = glGetUniformLocation (gl3_prog3d.program, "u_dlights");
 	gl3_prog3d.u_dlcolors = glGetUniformLocation (gl3_prog3d.program, "u_dlcolors");
+	gl3_prog3d.u_bump = glGetUniformLocation (gl3_prog3d.program, "u_bump");
+	gl3_prog3d.u_tbn_t = glGetUniformLocation (gl3_prog3d.program, "u_tbn_t");
+	gl3_prog3d.u_tbn_b = glGetUniformLocation (gl3_prog3d.program, "u_tbn_b");
+	gl3_prog3d.u_tbn_n = glGetUniformLocation (gl3_prog3d.program, "u_tbn_n");
 	glUseProgram (gl3_prog3d.program);
 	glUniform1f (gl3_prog3d.u_alpha, 1.0f);
 	glUniform1f (gl3_prog3d.u_scroll, 0.0f);
 	glUniform1i (gl3_prog3d.u_num_dlights, 0);
+	glUniform1i (gl3_prog3d.u_bump, 0);
+	glUniform1i (glGetUniformLocation (gl3_prog3d.program, "u_normalmap"), 2);	// unit 2
 	glUniform1i (glGetUniformLocation (gl3_prog3d.program, "u_tex"), 0);		// diffuse on unit 0
 	glUniform1i (glGetUniformLocation (gl3_prog3d.program, "u_lightmap"), 1);	// lightmap on unit 1
 

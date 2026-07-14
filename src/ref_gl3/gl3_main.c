@@ -18,6 +18,7 @@ cvar_t	*gl_2dscale;
 cvar_t	*gl_anisotropy;
 cvar_t	*gl_shadows;
 cvar_t	*gl_retexture;
+cvar_t	*gl_bump;
 cvar_t	*r_drawentities;
 cvar_t	*r_lightlevel;	// HACK: server reads this for monster sight (FindTarget)
 
@@ -312,6 +313,7 @@ static int GL3_Init (void *hinstance, void *wndproc)
 	gl_anisotropy = ri.Cvar_Get ("gl_anisotropy", "8", CVAR_ARCHIVE);
 	gl_shadows = ri.Cvar_Get ("gl_shadows", "1", CVAR_ARCHIVE);	// soft blob shadows
 	gl_retexture = ri.Cvar_Get ("gl_retexture", "1", CVAR_ARCHIVE);	// hi-res texture packs
+	gl_bump = ri.Cvar_Get ("gl_bump", "2", CVAR_ARCHIVE);	// bump under dlights; 2 = auto-generate maps
 	r_drawentities = ri.Cvar_Get ("r_drawentities", "1", 0);
 	r_lightlevel = ri.Cvar_Get ("r_lightlevel", "0", 0);
 

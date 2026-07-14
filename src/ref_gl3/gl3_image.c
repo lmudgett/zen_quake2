@@ -379,6 +379,111 @@ as a GL_RGBA8 texture and registers it in gl3textures[].
 ================
 */
 /*
+=================================================================
+
+NORMAL MAPS (bump under dynamic lights)
+
+=================================================================
+*/
+
+GLuint	gl3_flat_normal;	// 1x1 "no bump" normal map
+
+static GLuint GL3_UploadNormalMap (const byte *nm, int w, int h)
+{
+	GLuint	tex;
+
+	glGenTextures (1, &tex);
+	glBindTexture (GL_TEXTURE_2D, tex);
+	glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nm);
+	glGenerateMipmap (GL_TEXTURE_2D);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	gl3state.currenttexture = -1;
+	return tex;
+}
+
+// derive a tangent-space normal map from the diffuse: luminance as a height
+// field, 3x3 Sobel gradients, tileable (wrapping) sampling
+static GLuint GL3_GenNormalMap (const unsigned *rgba, int w, int h)
+{
+	byte	*nm = malloc (w * h * 4);
+	float	*lum = malloc (w * h * sizeof(float));
+	float	strength = 2.5f;
+	GLuint	tex;
+	int		x, y;
+
+	if (!nm || !lum)
+	{
+		free (nm); free (lum);
+		return 0;
+	}
+
+	for (y = 0; y < w * h; y++)
+	{
+		const byte *p = (const byte *)&rgba[y];
+		lum[y] = (p[0] * 0.299f + p[1] * 0.587f + p[2] * 0.114f) / 255.0f;
+	}
+
+#define LUM(px, py) lum[(((py) + h) % h) * w + (((px) + w) % w)]
+	for (y = 0; y < h; y++)
+	{
+		for (x = 0; x < w; x++)
+		{
+			float gx = (LUM(x-1,y-1) + 2*LUM(x-1,y) + LUM(x-1,y+1))
+					 - (LUM(x+1,y-1) + 2*LUM(x+1,y) + LUM(x+1,y+1));
+			float gy = (LUM(x-1,y-1) + 2*LUM(x,y-1) + LUM(x+1,y-1))
+					 - (LUM(x-1,y+1) + 2*LUM(x,y+1) + LUM(x+1,y+1));
+			float nx = gx * strength, ny = gy * strength, nz = 1.0f;
+			float ilen = 1.0f / sqrtf (nx*nx + ny*ny + nz*nz);
+			byte *o = nm + (y * w + x) * 4;
+			o[0] = (byte)((nx * ilen * 0.5f + 0.5f) * 255.0f);
+			o[1] = (byte)((ny * ilen * 0.5f + 0.5f) * 255.0f);
+			o[2] = (byte)((nz * ilen * 0.5f + 0.5f) * 255.0f);
+			o[3] = 255;
+		}
+	}
+#undef LUM
+
+	tex = GL3_UploadNormalMap (nm, w, h);
+	free (nm);
+	free (lum);
+	return tex;
+}
+
+// look for a pack-supplied <name>_n.png/tga/jpg normal map
+static GLuint GL3_LoadNormalOverride (const char *name)
+{
+	static const char *exts[] = { ".png", ".tga", ".jpg" };
+	char	trial[MAX_QPATH + 8];
+	byte	*raw;
+	int		rawlen, i, w, h, comp;
+	size_t	base = strlen (name) - 4;
+
+	for (i = 0; i < 3; i++)
+	{
+		memcpy (trial, name, base);
+		strcpy (trial + base, "_n");
+		strcpy (trial + base + 2, exts[i]);
+
+		rawlen = ri.FS_LoadFile (trial, (void **)&raw);
+		if (!raw)
+			continue;
+
+		stbi_uc *pixels = stbi_load_from_memory (raw, rawlen, &w, &h, &comp, 4);
+		ri.FS_FreeFile (raw);
+		if (!pixels)
+			continue;
+
+		GLuint tex = GL3_UploadNormalMap (pixels, w, h);
+		stbi_image_free (pixels);
+		return tex;
+	}
+	return 0;
+}
+
+/*
 =================
 R_FloodFillSkin
 
@@ -530,6 +635,16 @@ image_t *GL3_LoadPic (char *name, byte *pic, int width, int height, imagetype_t 
 		}
 	}
 
+	// world textures get a normal map for bump under dynamic lights:
+	// a pack-supplied <name>_n image, else generated from the diffuse
+	image->normaltex = 0;
+	if (type == it_wall && gl_bump && gl_bump->value >= 1 && name[0] != '*')
+	{
+		image->normaltex = GL3_LoadNormalOverride (name);
+		if (!image->normaltex && gl_bump->value >= 2)
+			image->normaltex = GL3_GenNormalMap (rgba, width, height);
+	}
+
 	glGenTextures (1, &image->texnum);
 	GL3_Bind (image->texnum);
 
@@ -630,6 +745,8 @@ void GL3_FreeUnusedImages (void)
 			continue;		// pics (HUD/menu) live for the whole session
 
 		glDeleteTextures (1, &image->texnum);
+		if (image->normaltex)
+			glDeleteTextures (1, &image->normaltex);
 		if (gl3state.currenttexture == (int)image->texnum)
 			gl3state.currenttexture = -1;
 		memset (image, 0, sizeof(*image));
@@ -834,6 +951,11 @@ void GL3_InitImages (void)
 
 	registration_sequence = 1;
 
+	{	// 1x1 "no bump" normal map: straight up in tangent space
+		static const byte flat[4] = { 128, 128, 255, 255 };
+		gl3_flat_normal = GL3_UploadNormalMap (flat, 1, 1);
+	}
+
 	LoadPCX ("pics/colormap.pcx", &pic, &pal, &width, &height);
 	if (!pal)
 		ri.Sys_Error (ERR_FATAL, "Couldn't load pics/colormap.pcx");
@@ -873,6 +995,14 @@ void GL3_ShutdownImages (void)
 		if (image->name[0] == 0)
 			continue;		// free slot
 		glDeleteTextures (1, &image->texnum);
+		if (image->normaltex)
+			glDeleteTextures (1, &image->normaltex);
+	}
+
+	if (gl3_flat_normal)
+	{
+		glDeleteTextures (1, &gl3_flat_normal);
+		gl3_flat_normal = 0;
 	}
 
 	memset (gl3textures, 0, sizeof (gl3textures));
