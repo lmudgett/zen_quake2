@@ -291,15 +291,38 @@ static void GL3_RenderFrame (refdef_t *fd)
 			r_newrefdef.blend[2], r_newrefdef.blend[3]);
 }
 
+// Anaglyph stereo: with cl_stereo the client runs the whole draw path twice
+// per frame with opposite camera offsets (id targeted quad-buffered hardware
+// stereo, long dead). Composite in the window's channels instead -- left eye
+// in red, right eye in green+blue, for standard red/cyan glasses. Scene-FBO
+// rendering runs unmasked; the mask applies only to window-target drawing.
+void GL3_ApplyStereoMask (void)
+{
+	if (gl3state.stereo_eye < 0)
+		glColorMask (GL_TRUE, GL_FALSE, GL_FALSE, GL_TRUE);
+	else if (gl3state.stereo_eye > 0)
+		glColorMask (GL_FALSE, GL_TRUE, GL_TRUE, GL_TRUE);
+	else
+		glColorMask (GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+}
+
 static void GL3_BeginFrame (float camera_separation)
 {
 	GL3_StartFrame ();
 
 	GL3_CheckWindowChanges ();	// vid_fullscreen / gl_mode / gl_2dscale
 
+	gl3state.stereo_eye = (camera_separation < 0) ? -1
+		: (camera_separation > 0) ? 1 : 0;
+
 	glViewport (0, 0, gl3state.width, gl3state.height);
+	glColorMask (GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	glClearColor (0.0f, 0.0f, 0.0f, 1.0f);
-	glClear (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	if (gl3state.stereo_eye > 0)
+		glClear (GL_DEPTH_BUFFER_BIT);	// right pass: keep the left eye's channels
+	else
+		glClear (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	GL3_ApplyStereoMask ();
 
 	// prepare for 2D drawing (menu/console when no 3D view is rendered)
 	GL3_Draw_SetOrtho ();
@@ -307,6 +330,7 @@ static void GL3_BeginFrame (float camera_separation)
 
 static void GL3_EndFrame (void)
 {
+	glColorMask (GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	GL3_ScreenShot_Capture ();	// grab the back buffer before it is swapped
 	GL3_SwapBuffers ();
 }

@@ -47,6 +47,7 @@ typedef struct
 	SDL_GLContext	context;
 
 	int			currenttexture;		// bound GL texture cache
+	int			stereo_eye;			// anaglyph pass: -1 left, +1 right, 0 mono
 } gl3state_t;
 
 extern gl3state_t	gl3state;
@@ -178,6 +179,9 @@ GLuint GL3_Post_ResolveDepth (void);	// copy scene depth to a texture (soft part
 #define GL_TEXTURE_MAX_ANISOTROPY_EXT		0x84FE
 #define GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT	0x84FF
 #endif
+
+// anaglyph stereo channel mask for the current eye (gl3_main.c)
+void GL3_ApplyStereoMask (void);
 
 // gl3_glimp.c -- window / context management
 void     GL3_ShutdownWindow (void);

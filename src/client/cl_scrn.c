@@ -1287,10 +1287,11 @@ void SCR_UpdateScreen (void)
 
 	/*
 	** range check cl_camera_separation so we don't inadvertently fry someone's
-	** brain
+	** brain (id capped at 1.0 for hardware stereo; the anaglyph composite
+	** wants roughly true-scale eye distance, ~2.5 units at 1 unit/inch)
 	*/
-	if ( cl_stereo_separation->value > 1.0 )
-		Cvar_SetValue( "cl_stereo_separation", 1.0 );
+	if ( cl_stereo_separation->value > 4.0 )
+		Cvar_SetValue( "cl_stereo_separation", 4.0 );
 	else if ( cl_stereo_separation->value < 0 )
 		Cvar_SetValue( "cl_stereo_separation", 0.0 );
 

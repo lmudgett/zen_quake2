@@ -272,6 +272,7 @@ void GL3_Post_BeginScene (void)
 
 	glBindFramebuffer (GL_FRAMEBUFFER, fb_samples ? fbo_ms : fbo_scene);
 	glViewport (0, 0, fb_width, fb_height);
+	glColorMask (GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);	// eye mask is window-only
 	glClearColor (0.0f, 0.0f, 0.0f, 1.0f);
 	glClear (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	if (fb_samples)
@@ -323,6 +324,7 @@ void GL3_Post_EndScene (void)
 	// final pass to the window
 	glBindFramebuffer (GL_FRAMEBUFFER, 0);
 	glViewport (0, 0, gl3state.width, gl3state.height);
+	GL3_ApplyStereoMask ();		// anaglyph: this eye's channels only
 	glUseProgram (prog_post.program);
 	glUniform1f (prog_post.u_gamma,
 		(vid_gamma && vid_gamma->value >= 0.5f) ? vid_gamma->value : 1.0f);
