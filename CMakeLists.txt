@@ -5,6 +5,10 @@ if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "This port is 64-bit only. Configure a 64-bit toolchain.")
 endif()
 
+if(WIN32)
+    enable_language(RC)
+endif()
+
 # C dialect is applied per-target via q2_common_flags (C23 / latest);
 # a global CMAKE_C_STANDARD would leak into fetched deps like SDL3.
 
@@ -94,6 +98,9 @@ add_executable(q2ded
     src/platform/net_sockets.c
 )
 target_compile_definitions(q2ded PRIVATE DEDICATED_ONLY)
+if(WIN32)
+    target_sources(q2ded PRIVATE src/platform/quake2.rc)
+endif()
 target_include_directories(q2ded PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(q2ded PRIVATE q2_common_flags SDL3::SDL3)
 if(WIN32)
@@ -176,6 +183,14 @@ target_include_directories(quake2 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(quake2 PRIVATE q2_common_flags SDL3::SDL3)
 if(WIN32)
     target_link_libraries(quake2 PRIVATE ws2_32)
+    target_sources(quake2 PRIVATE src/platform/quake2.rc)
+    # GUI subsystem: a windowed game linked as a console app reads as an
+    # anomaly to AV heuristics (and matches the original id binary).
+    # Entry point stays plain main(); console I/O is dedicated-only (q2ded).
+    set_target_properties(quake2 PROPERTIES WIN32_EXECUTABLE TRUE)
+    if(MSVC)
+        target_link_options(quake2 PRIVATE /ENTRY:mainCRTStartup)
+    endif()
 endif()
 set_target_properties(quake2 PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}>")
 if(WIN32)
@@ -226,3 +241,10 @@ set_target_properties(ref_gl3 PROPERTIES
     PREFIX ""            # produce ref_gl3.dll / ref_gl3.so, not libref_gl3
     LIBRARY_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}>"
     RUNTIME_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}>")
+
+# These targets are defined after the signing block, so sign them here —
+# without this, enabling signing silently skips the main exe and renderer.
+if(Q2_SIGN_ENABLED)
+    q2_sign(quake2)
+    q2_sign(ref_gl3)
+endif()

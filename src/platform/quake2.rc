@@ -1,0 +1,32 @@
+// Version metadata + icon. An exe with no VERSIONINFO and no publisher
+// strings scores as "anonymous binary" in AV reputation heuristics
+// (Norton Download Insight/SONAR) — keep this populated.
+#include <winver.h>
+
+1 ICON "q2.ico"
+
+1 VERSIONINFO
+FILEVERSION     0,9,0,0
+PRODUCTVERSION  0,9,0,0
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName",      "Quake2 SDL3 Port"
+            VALUE "FileDescription",  "Quake II (SDL3 / OpenGL 3.3 port)"
+            VALUE "FileVersion",      "0.9"
+            VALUE "InternalName",     "quake2"
+            VALUE "LegalCopyright",   "GPL-2.0; original game code (C) id Software, Inc."
+            VALUE "OriginalFilename", "quake2.exe"
+            VALUE "ProductName",      "Quake II"
+            VALUE "ProductVersion",   "0.9"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
