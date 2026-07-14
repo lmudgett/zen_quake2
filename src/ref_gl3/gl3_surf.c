@@ -872,7 +872,10 @@ void GL3_DrawWater (const float *viewproj, float time)
 	glUniformMatrix4fv (gl3_prog_warp.u_mvp, 1, GL_FALSE, viewproj);
 	glUniform1f (gl3_prog_warp.u_time, time);
 	glUniform1f (gl3_prog_warp.u_gamma, vid_gamma->value < 0.5f ? 0.5f : vid_gamma->value);
-	glUniform1f (gl3_prog_warp.u_intensity, gl_intensity ? gl_intensity->value : 1.0f);
+	// id draws ALL turb at inverse_intensity ("the textures are prescaled up
+	// for a better lighting range, so scale it back down") -- liquids show
+	// the texture's original brightness, never the intensity boost
+	glUniform1f (gl3_prog_warp.u_intensity, 1.0f);
 	glActiveTexture (GL_TEXTURE0);
 	glBindVertexArray (world_vao);
 
@@ -977,12 +980,6 @@ void GL3_DrawWorldTranslucent (void)
 		glUniform1f (gl3_prog_warp.u_alpha, GL3_TurbAlpha (surf));
 		glUniform1f (gl3_prog_warp.u_scroll,
 			(surf->texinfo && (surf->texinfo->flags & SURF_FLOWING)) ? GL3_FlowScrollWarp () : 0.0f);
-		// id's inverse-intensity convention applies only to TRANS surfaces;
-		// gl_wateralpha-blended liquid was opaque (intensity boosted) in
-		// vanilla, so keep its original brightness
-		glUniform1f (gl3_prog_warp.u_intensity,
-			(surf->texinfo && (surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66)))
-				? 1.0f : (gl_intensity ? gl_intensity->value : 1.0f));
 
 		img = surf->texinfo->image ? surf->texinfo->image : r_notexture;
 		GL3_Bind (img->texnum);
@@ -1131,7 +1128,7 @@ void GL3_DrawBrushModel (entity_t *e, const float *viewproj)
 		glUniformMatrix4fv (gl3_prog_warp.u_mvp, 1, GL_FALSE, mvp);
 		glUniform1f (gl3_prog_warp.u_time, r_newrefdef.time);
 		glUniform1f (gl3_prog_warp.u_gamma, vid_gamma->value < 0.5f ? 0.5f : vid_gamma->value);
-		glUniform1f (gl3_prog_warp.u_intensity, gl_intensity ? gl_intensity->value : 1.0f);
+		glUniform1f (gl3_prog_warp.u_intensity, 1.0f);	// id: all turb at inverse_intensity
 
 		surf = r_worldmodel->surfaces + mod->firstmodelsurface;
 		for (i = 0; i < mod->nummodelsurfaces; i++, surf++)
