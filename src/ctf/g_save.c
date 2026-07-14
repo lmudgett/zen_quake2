@@ -323,6 +323,8 @@ void ReadField (FILE *f, field_t *field, byte *base)
 
 	case F_LSTRING:
 		len = *(int *)p;
+		if (len < 0 || len > 0x10000)
+			gi.error ("ReadField: bad string length %i", len);
 		if (!len)
 			*(char **)p = NULL;
 		else
@@ -333,6 +335,8 @@ void ReadField (FILE *f, field_t *field, byte *base)
 		break;
 	case F_GSTRING:
 		len = *(int *)p;
+		if (len < 0 || len > 0x10000)
+			gi.error ("ReadField: bad string length %i", len);
 		if (!len)
 			*(char **)p = NULL;
 		else
@@ -345,6 +349,8 @@ void ReadField (FILE *f, field_t *field, byte *base)
 		index = *(int *)p;
 		if ( index == -1 )
 			*(edict_t **)p = NULL;
+		else if (index < 0 || index >= game.maxentities)
+			gi.error ("ReadField: bad edict index %i", index);
 		else
 			*(edict_t **)p = &g_edicts[index];
 		break;
@@ -352,6 +358,8 @@ void ReadField (FILE *f, field_t *field, byte *base)
 		index = *(int *)p;
 		if ( index == -1 )
 			*(gclient_t **)p = NULL;
+		else if (index < 0 || index >= game.maxclients)
+			gi.error ("ReadField: bad client index %i", index);
 		else
 			*(gclient_t **)p = &game.clients[index];
 		break;
@@ -359,6 +367,8 @@ void ReadField (FILE *f, field_t *field, byte *base)
 		index = *(int *)p;
 		if ( index == -1 )
 			*(gitem_t **)p = NULL;
+		else if (index < 0 || index >= game.num_items)
+			gi.error ("ReadField: bad item index %i", index);
 		else
 			*(gitem_t **)p = &itemlist[index];
 		break;
@@ -465,6 +475,7 @@ void ReadGame (char *filename)
 {
 	FILE	*f;
 	int		i;
+	int		prevmaxentities, prevmaxclients;
 	char	str[16];
 
 	gi.FreeTags (TAG_GAME);
@@ -480,10 +491,24 @@ void ReadGame (char *filename)
 		gi.error ("Savegame from an older version.\n");
 	}
 
+	// InitGame has already sized game.maxentities/maxclients from the cvars;
+	// remember those so the file can't claim larger counts and overflow the
+	// allocations (the level load memsets/indexes g_edicts by game.maxentities)
+	prevmaxentities = game.maxentities;
+	prevmaxclients = game.maxclients;
+
 	g_edicts =  gi.TagMalloc (game.maxentities * sizeof(g_edicts[0]), TAG_GAME);
 	globals.edicts = g_edicts;
 
 	fread (&game, sizeof(game), 1, f);
+
+	if (game.maxentities <= 0 || game.maxentities > prevmaxentities
+		|| game.maxclients <= 0 || game.maxclients > prevmaxclients)
+	{
+		fclose (f);
+		gi.error ("ReadGame: savegame entity/client count out of range");
+	}
+
 	game.clients = gi.TagMalloc (game.maxclients * sizeof(game.clients[0]), TAG_GAME);
 	for (i=0 ; i<game.maxclients ; i++)
 		ReadClient (f, &game.clients[i]);
@@ -705,6 +730,11 @@ void ReadLevel (char *filename)
 		}
 		if (entnum == -1)
 			break;
+		if (entnum < 0 || entnum >= game.maxentities)
+		{
+			fclose (f);
+			gi.error ("ReadLevel: bad entity number %i", entnum);
+		}
 		if (entnum >= globals.num_edicts)
 			globals.num_edicts = entnum+1;
 
