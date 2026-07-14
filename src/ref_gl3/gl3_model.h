@@ -28,6 +28,7 @@ typedef struct
 #define SURF_DRAWLAVA		0x20	// turb surface with a lava texture: never gl_wateralpha-blended
 #define SURF_DRAWBACKGROUND	0x40
 #define SURF_UNDERWATER		0x80
+#define SURF_DRAWSLIME		0x100	// acid/sewage: blends with gl_slimealpha (default opaque)
 
 typedef struct
 {

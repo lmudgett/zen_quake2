@@ -132,6 +132,7 @@ extern cvar_t	*vid_gamma;
 extern cvar_t	*gl_clear;
 extern cvar_t	*gl_intensity;
 extern cvar_t	*gl_wateralpha;
+extern cvar_t	*gl_slimealpha;
 extern cvar_t	*gl_2dscale;
 
 // gl3_glimp.c -- window / context management

@@ -830,25 +830,26 @@ void GL3_DrawWorld (void)
 		glUniform1f (gl3_prog3d.u_scroll, 0.0f);
 }
 
-// a turb surface draws blended if the texinfo asks for it (TRANS33/66) or,
-// for plain water/slime, whenever gl_wateralpha lowers it below opaque.
-// Lava is never blended (flagged SURF_DRAWLAVA at load).
-static qboolean GL3_TurbTranslucent (const msurface_t *surf)
-{
-	if (surf->texinfo && (surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66)))
-		return true;
-	if (surf->flags & SURF_DRAWLAVA)
-		return false;
-	return gl_wateralpha && gl_wateralpha->value < 1.0f;
-}
-
+// a turb surface draws blended if the texinfo asks for it (TRANS33/66) or
+// when its liquid-class alpha cvar lowers it below opaque: gl_wateralpha
+// for plain water, gl_slimealpha for acid/sewage (default opaque -- murk
+// hides submerged secrets). Lava is never blended.
 static float GL3_TurbAlpha (const msurface_t *surf)
 {
 	if (surf->texinfo && (surf->texinfo->flags & SURF_TRANS33))
 		return 0.33f;
 	if (surf->texinfo && (surf->texinfo->flags & SURF_TRANS66))
 		return 0.66f;
-	return gl_wateralpha->value;
+	if (surf->flags & SURF_DRAWLAVA)
+		return 1.0f;
+	if (surf->flags & SURF_DRAWSLIME)
+		return gl_slimealpha ? gl_slimealpha->value : 1.0f;
+	return gl_wateralpha ? gl_wateralpha->value : 1.0f;
+}
+
+static qboolean GL3_TurbTranslucent (const msurface_t *surf)
+{
+	return GL3_TurbAlpha (surf) < 1.0f;
 }
 
 /*

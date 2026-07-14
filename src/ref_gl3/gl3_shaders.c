@@ -169,13 +169,21 @@ static const char *fragWarp =
 	"uniform float u_alpha;\n"		// translucent water (TRANS33/66)
 	"uniform float u_scroll;\n"		// SURF_FLOWING, raw units
 	"out vec4 frag;\n"
+	// id's per-vertex turbsin displacement (EmitWaterPolys)
+	"vec2 warp_at(vec2 p) {\n"
+	"    return vec2(sin(p.y * 0.125 + u_time), sin(p.x * 0.125 + u_time)) * 8.0;\n"
+	"}\n"
 	"void main() {\n"
-	// id's EmitWaterPolys: warp from the UNSCROLLED coords, then scroll s,
-	// then normalize by /64
-	"    vec2 w;\n"
-	"    w.x = v_uv.x + sin(v_uv.y * 0.125 + u_time) * 8.0 + u_scroll;\n"
-	"    w.y = v_uv.y + sin(v_uv.x * 0.125 + u_time) * 8.0;\n"
-	"    w /= 64.0;\n"
+	// id warps VERTICES of ~64-unit subdivided patches (GL_SubdivideSurface)
+	// and lerps between them; the sine's ~50-unit period is under-sampled by
+	// that grid, giving vanilla water its choppy patchwork slosh. Emulate it:
+	// sample the displacement at the 64-unit cell corners and bilerp, instead
+	// of evaluating the sine per fragment (which looks like smooth smears).
+	"    vec2 c0 = floor(v_uv / 64.0) * 64.0;\n"
+	"    vec2 fr = (v_uv - c0) / 64.0;\n"
+	"    vec2 d = mix(mix(warp_at(c0),                    warp_at(c0 + vec2(64.0, 0.0)),  fr.x),\n"
+	"                 mix(warp_at(c0 + vec2(0.0, 64.0)),  warp_at(c0 + vec2(64.0, 64.0)), fr.x), fr.y);\n"
+	"    vec2 w = (v_uv + d + vec2(u_scroll, 0.0)) / 64.0;\n"
 	"    vec4 t = texture(u_tex, w);\n"
 	"    vec3 c = pow(t.rgb * u_intensity, vec3(u_gamma));\n"
 	"    frag = vec4(c, t.a * u_alpha);\n"

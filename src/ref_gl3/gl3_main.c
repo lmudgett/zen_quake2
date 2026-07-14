@@ -13,6 +13,7 @@ cvar_t	*vid_gamma;
 cvar_t	*gl_clear;
 cvar_t	*gl_intensity;
 cvar_t	*gl_wateralpha;
+cvar_t	*gl_slimealpha;
 cvar_t	*gl_2dscale;
 cvar_t	*r_drawentities;
 cvar_t	*r_lightlevel;	// HACK: server reads this for monster sight (FindTarget)
@@ -276,6 +277,7 @@ static int GL3_Init (void *hinstance, void *wndproc)
 	gl_clear = ri.Cvar_Get ("gl_clear", "0", 0);
 	gl_intensity = ri.Cvar_Get ("intensity", "2", CVAR_ARCHIVE);
 	gl_wateralpha = ri.Cvar_Get ("gl_wateralpha", "0.75", CVAR_ARCHIVE);
+	gl_slimealpha = ri.Cvar_Get ("gl_slimealpha", "1", CVAR_ARCHIVE);	// acid: opaque like vanilla
 	gl_2dscale = ri.Cvar_Get ("gl_2dscale", "0", CVAR_ARCHIVE);	// 0 = auto
 	r_drawentities = ri.Cvar_Get ("r_drawentities", "1", 0);
 	r_lightlevel = ri.Cvar_Get ("r_lightlevel", "0", 0);
