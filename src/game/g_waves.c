@@ -190,6 +190,29 @@ static edict_t *WaveSpawnMonster (edict_t *player, char *classname)
 	}
 
 	WaveFacePlayer (m, player);
+
+	// clear anything already occupying the spot (the picker can return the
+	// same point twice in one wave; a monster stuck inside another never
+	// pathed and its wave could never clear) -- id's triggered-spawn idiom.
+	// KillBox traces with no passent, so unlink m first or the trace
+	// startsolids against m's own box and the telefrag kills m itself
+	// (id only ever KillBoxes entities that are not yet linked/solid).
+	m->s.origin[2] += 1;
+	gi.unlinkentity (m);
+	KillBox (m);
+	gi.linkentity (m);
+
+	// The spawn function scheduled *monster_start_go for next frame; if we
+	// aggroed first, its stand()/pausetime=1e8 would cancel the FoundTarget
+	// one frame later, and with enemy already set FindTarget short-circuits
+	// ("client == self->enemy -> return true") without ever re-aggroing --
+	// the monster would stand frozen until its pain animation woke it. Run
+	// the start think now, then aggro, matching monster_triggered_spawn.
+	if (m->think)
+		m->think (m);
+	if (!m->inuse)
+		return NULL;
+
 	m->enemy = player;
 	if (m->monsterinfo.run)
 		FoundTarget (m);
