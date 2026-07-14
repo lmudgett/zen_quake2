@@ -19,6 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #include "qcommon.h"
+#include <ctype.h>
 
 // define this to dissalow any data but the demo pak file
 //#define	NO_ADDONS
@@ -384,6 +385,60 @@ void FS_Read (void *buffer, int len, FILE *f)
 }
 
 /*
+=============================================================================
+Asset cache
+
+Pak contents are immutable for the life of the process, so with the
+cache_assets cvar on, FS_LoadFile keeps a private RAM copy of every file
+it reads out of a pak and serves later loads from memory — map changes
+and restarts skip the disk entirely. Loose files on disk are never
+cached; they can change while we run.
+=============================================================================
+*/
+#define CACHE_HASH_SIZE	1024	// power of two
+
+typedef struct cachedfile_s
+{
+	struct cachedfile_s	*next;
+	int					len;
+	char				name[MAX_QPATH];	// lowercased path
+	// file bytes follow the struct
+} cachedfile_t;
+
+static cachedfile_t	*fs_cache_hash[CACHE_HASH_SIZE];
+static cvar_t		*cache_assets;
+
+static unsigned Cache_HashPath (const char *path, char *lowered, int size)
+{
+	unsigned	hash = 5381;
+	int			i;
+
+	for (i = 0; path[i] && i < size-1; i++)
+	{
+		lowered[i] = (char)tolower ((unsigned char)path[i]);
+		hash = hash*33 + (unsigned char)lowered[i];
+	}
+	lowered[i] = 0;
+	return hash & (CACHE_HASH_SIZE-1);
+}
+
+void FS_FlushAssetCache (void)
+{
+	cachedfile_t	*c, *next;
+	int				i;
+
+	for (i = 0; i < CACHE_HASH_SIZE; i++)
+	{
+		for (c = fs_cache_hash[i]; c; c = next)
+		{
+			next = c->next;
+			free (c);
+		}
+		fs_cache_hash[i] = NULL;
+	}
+}
+
+/*
 ============
 FS_LoadFile
 
@@ -396,8 +451,27 @@ int FS_LoadFile (char *path, void **buffer)
 	FILE	*h;
 	byte	*buf;
 	int		len;
+	char			lowered[MAX_QPATH];
+	unsigned		hash;
+	cachedfile_t	*c;
 
 	buf = NULL;	// quiet compiler warning
+
+	// serve pak contents out of RAM when the asset cache is on
+	if (buffer && cache_assets && cache_assets->value && strlen(path) < MAX_QPATH)
+	{
+		hash = Cache_HashPath (path, lowered, sizeof(lowered));
+		for (c = fs_cache_hash[hash]; c; c = c->next)
+		{
+			if (!strcmp (c->name, lowered))
+			{
+				buf = Z_Malloc (c->len);
+				memcpy (buf, (byte *)(c+1), c->len);
+				*buffer = buf;
+				return c->len;
+			}
+		}
+	}
 
 // look for it in the filesystem or pack files
 	len = FS_FOpenFile (path, &h);
@@ -407,7 +481,7 @@ int FS_LoadFile (char *path, void **buffer)
 			*buffer = NULL;
 		return -1;
 	}
-	
+
 	if (!buffer)
 	{
 		fclose (h);
@@ -420,6 +494,22 @@ int FS_LoadFile (char *path, void **buffer)
 	FS_Read (buf, len, h);
 
 	fclose (h);
+
+	// remember pak contents for the next load
+	if (cache_assets && cache_assets->value && file_from_pak && len > 0
+		&& strlen(path) < MAX_QPATH)
+	{
+		hash = Cache_HashPath (path, lowered, sizeof(lowered));
+		c = malloc (sizeof(*c) + len);
+		if (c)
+		{
+			strcpy (c->name, lowered);
+			c->len = len;
+			memcpy ((byte *)(c+1), buf, len);
+			c->next = fs_cache_hash[hash];
+			fs_cache_hash[hash] = c;
+		}
+	}
 
 	return len;
 }
@@ -598,6 +688,9 @@ void FS_SetGamedir (char *dir)
 		Com_Printf ("Gamedir should be a single filename, not a path\n");
 		return;
 	}
+
+	FS_FlushAssetCache ();	// the search order changes; cached pak reads
+							// could shadow the new gamedir's files
 
 	//
 	// free up any current game dir info
@@ -846,6 +939,9 @@ void FS_InitFilesystem (void)
 	Cmd_AddCommand ("path", FS_Path_f);
 	Cmd_AddCommand ("link", FS_Link_f);
 	Cmd_AddCommand ("dir", FS_Dir_f );
+
+	// keep game assets resident in RAM/VRAM across map loads
+	cache_assets = Cvar_Get ("cache_assets", "1", CVAR_ARCHIVE);
 
 	//
 	// basedir <path>

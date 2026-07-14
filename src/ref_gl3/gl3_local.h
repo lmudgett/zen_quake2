@@ -149,6 +149,7 @@ extern cvar_t	*gl_modulate;	// registered lazily in gl3_surf.c
 extern cvar_t	*gl_anisotropy;
 extern cvar_t	*gl_shadows;		// soft blob shadows under entities
 extern cvar_t	*gl_retexture;		// hi-res .png/.tga/.jpg texture overrides
+extern cvar_t	*cache_assets;		// keep textures/models resident across maps
 extern cvar_t	*gl_bump;			// 0 off, 1 _n maps only, 2 + auto-generate
 extern cvar_t	*gl_msaa;			// gl3_post.c
 extern cvar_t	*gl_renderscale;

@@ -20,6 +20,8 @@ image_t		gl3textures[MAX_GLTEXTURES];
 int			numgl3textures;
 int			registration_sequence;
 
+static void GL3_PurgeOldImages (void);
+
 // pcx_t and miptex_t come from qfiles.h (via the qcommon.h include chain).
 
 typedef struct
@@ -570,8 +572,20 @@ image_t *GL3_LoadPic (char *name, byte *pic, int width, int height, imagetype_t 
 	if (i == numgl3textures)
 	{
 		if (numgl3textures == MAX_GLTEXTURES)
-			ri.Sys_Error (ERR_DROP, "MAX_GLTEXTURES");
-		numgl3textures++;
+		{
+			// asset cache kept old maps' textures around — evict the
+			// stale ones and retry
+			GL3_PurgeOldImages ();
+			for (i = 0, image = gl3textures; i < numgl3textures; i++, image++)
+			{
+				if (image->name[0] == 0)
+					break;
+			}
+			if (i == numgl3textures)
+				ri.Sys_Error (ERR_DROP, "MAX_GLTEXTURES");
+		}
+		else
+			numgl3textures++;
 	}
 	image = &gl3textures[i];
 
@@ -724,13 +738,14 @@ void GL3_UpdateAnisotropy (void)
 
 /*
 ================
-GL3_FreeUnusedImages
+GL3_PurgeOldImages
 
-Any image that was not touched by this registration sequence
-will be freed (pics persist for the session, like the original).
+Frees every image not touched by this registration sequence,
+regardless of the asset cache (pics persist for the session,
+like the original).
 ================
 */
-void GL3_FreeUnusedImages (void)
+static void GL3_PurgeOldImages (void)
 {
 	int		i;
 	image_t	*image;
@@ -751,6 +766,22 @@ void GL3_FreeUnusedImages (void)
 			gl3state.currenttexture = -1;
 		memset (image, 0, sizeof(*image));
 	}
+}
+
+/*
+================
+GL3_FreeUnusedImages
+
+Any image that was not touched by this registration sequence
+will be freed — unless the asset cache is keeping textures
+resident across maps.
+================
+*/
+void GL3_FreeUnusedImages (void)
+{
+	if (cache_assets && cache_assets->value)
+		return;
+	GL3_PurgeOldImages ();
 }
 
 /*

@@ -263,8 +263,24 @@ model_t *GL3_Mod_ForName (char *name, qboolean crash)
 	if (i == mod_numknown)
 	{
 		if (mod_numknown == MAX_MOD_KNOWN)
-			ri.Sys_Error (ERR_DROP, "mod_numknown == MAX_MOD_KNOWN");
-		mod_numknown++;
+		{
+			// asset cache kept old maps' models around — evict the stale
+			// ones (not registered this sequence) and retry
+			for (i=0 , mod=mod_known ; i<mod_numknown ; i++, mod++)
+			{
+				if (mod->name[0] && mod->registration_sequence != registration_sequence)
+					Mod_Free (mod);
+			}
+			for (i=0 , mod=mod_known ; i<mod_numknown ; i++, mod++)
+			{
+				if (!mod->name[0])
+					break;
+			}
+			if (i == mod_numknown)
+				ri.Sys_Error (ERR_DROP, "mod_numknown == MAX_MOD_KNOWN");
+		}
+		else
+			mod_numknown++;
 	}
 	strcpy (mod->name, name);
 
@@ -1330,8 +1346,11 @@ void GL3_EndRegistration (void)
 		if (!mod->name[0])
 			continue;
 		if (mod->registration_sequence != registration_sequence)
-		{	// don't need this model
-			Mod_Free (mod);
+		{	// not needed by this map — but with the asset cache on,
+			// alias/sprite models stay resident for later maps; stale
+			// brush models (old worlds) are always freed
+			if (!(cache_assets && cache_assets->value) || mod->type == mod_brush)
+				Mod_Free (mod);
 		}
 	}
 

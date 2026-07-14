@@ -78,6 +78,7 @@ cvar_t		*s_khz;
 cvar_t		*s_show;
 cvar_t		*s_mixahead;
 cvar_t		*s_primary;
+cvar_t		*s_cacheassets;	// shared "cache_assets" cvar: keep sounds across maps
 
 
 int		s_rawend;
@@ -131,6 +132,7 @@ void S_Init (void)
 		s_show = Cvar_Get ("s_show", "0", 0);
 		s_testsound = Cvar_Get ("s_testsound", "0", 0);
 		s_primary = Cvar_Get ("s_primary", "0", CVAR_ARCHIVE);	// win32 specific
+		s_cacheassets = Cvar_Get ("cache_assets", "1", CVAR_ARCHIVE);	// sounds persist across maps
 
 		Cmd_AddCommand("play", S_Play);
 		Cmd_AddCommand("stopsound", S_StopAllSounds);
@@ -198,6 +200,34 @@ void S_Shutdown(void)
 
 /*
 ==================
+S_EvictStaleSfx
+
+The asset cache keeps sounds resident across maps; when the sfx table
+fills up, free everything not registered this sequence. Returns the
+number of slots reclaimed.
+==================
+*/
+static int S_EvictStaleSfx (void)
+{
+	int		i, freed = 0;
+	sfx_t	*sfx;
+
+	for (i=0, sfx=known_sfx ; i < num_sfx ; i++, sfx++)
+	{
+		if (!sfx->name[0])
+			continue;
+		if (sfx->registration_sequence == s_registration_sequence)
+			continue;
+		if (sfx->cache)
+			Z_Free (sfx->cache);
+		memset (sfx, 0, sizeof(*sfx));
+		freed++;
+	}
+	return freed;
+}
+
+/*
+==================
 S_FindName
 
 ==================
@@ -234,15 +264,22 @@ sfx_t *S_FindName (char *name, qboolean create)
 	if (i == num_sfx)
 	{
 		if (num_sfx == MAX_SFX)
-			Com_Error (ERR_FATAL, "S_FindName: out of sfx_t");
-		num_sfx++;
+		{
+			if (!S_EvictStaleSfx ())
+				Com_Error (ERR_FATAL, "S_FindName: out of sfx_t");
+			for (i=0 ; i < num_sfx ; i++)
+				if (!known_sfx[i].name[0])
+					break;
+		}
+		else
+			num_sfx++;
 	}
-	
+
 	sfx = &known_sfx[i];
 	memset (sfx, 0, sizeof(*sfx));
 	strcpy (sfx->name, name);
 	sfx->registration_sequence = s_registration_sequence;
-	
+
 	return sfx;
 }
 
@@ -270,10 +307,17 @@ sfx_t *S_AliasName (char *aliasname, char *truename)
 	if (i == num_sfx)
 	{
 		if (num_sfx == MAX_SFX)
-			Com_Error (ERR_FATAL, "S_FindName: out of sfx_t");
-		num_sfx++;
+		{
+			if (!S_EvictStaleSfx ())
+				Com_Error (ERR_FATAL, "S_FindName: out of sfx_t");
+			for (i=0 ; i < num_sfx ; i++)
+				if (!known_sfx[i].name[0])
+					break;
+		}
+		else
+			num_sfx++;
 	}
-	
+
 	sfx = &known_sfx[i];
 	memset (sfx, 0, sizeof(*sfx));
 	strcpy (sfx->name, aliasname);
@@ -337,7 +381,10 @@ void S_EndRegistration (void)
 		if (!sfx->name[0])
 			continue;
 		if (sfx->registration_sequence != s_registration_sequence)
-		{	// don't need this sound
+		{	// don't need this sound — unless the asset cache is
+			// keeping sounds resident across maps
+			if (s_cacheassets && s_cacheassets->value)
+				continue;
 			if (sfx->cache)	// it is possible to have a leftover
 				Z_Free (sfx->cache);	// from a server that didn't finish loading
 			memset (sfx, 0, sizeof(*sfx));

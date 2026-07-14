@@ -674,6 +674,7 @@ FILESYSTEM
 */
 
 void	FS_InitFilesystem (void);
+void	FS_FlushAssetCache (void);
 void	FS_SetGamedir (char *dir);
 char	*FS_Gamedir (void);
 char	*FS_NextPath (char *prevpath);
