@@ -1,10 +1,19 @@
 // gl3_image.c -- Quake 2 asset loading (PCX/TGA/WAL) and GL texture upload
-// for the modern OpenGL 3.3 core renderer.
+// for the modern OpenGL 3.3 core renderer. High-resolution replacement
+// textures (retexture packs) load via stb_image when a .png/.tga/.jpg
+// exists at the asset's path.
 
 #include <stdlib.h>
 #include <string.h>
 
 #include "gl3_local.h"
+
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ONLY_PNG
+#define STBI_ONLY_JPEG
+#define STBI_ONLY_TGA
+#define STBI_NO_STDIO
+#include "stb_image.h"
 
 unsigned	d_8to24table[256];
 image_t		gl3textures[MAX_GLTEXTURES];
@@ -665,6 +674,65 @@ GL3_FindImage
 Finds or loads the given image by name/extension.
 ================
 */
+/*
+================
+GL3_TryOverride
+
+Retexture-pack support: look for a high-resolution .png/.tga/.jpg at the
+asset's own path (e.g. textures/e1u1/floor1.wal -> .../floor1.png). The
+image keeps the ORIGINAL asset's logical size so world texcoords and 2D
+layouts are unaffected -- only the pixels are sharper.
+================
+*/
+static image_t *GL3_TryOverride (char *name, imagetype_t type, int orig_w, int orig_h)
+{
+	static const char *exts[] = { ".png", ".tga", ".jpg" };
+	char		trial[MAX_QPATH];
+	byte		*raw;
+	int			rawlen, i, w, h, comp;
+	stbi_uc		*pixels;
+	image_t		*image;
+	size_t		base;
+
+	if (!gl_retexture || !gl_retexture->value)
+		return NULL;
+
+	base = strlen (name) - 4;		// callers guarantee a 4-char extension
+	if (base + 5 > sizeof(trial))
+		return NULL;
+
+	for (i = 0; i < 3; i++)
+	{
+		memcpy (trial, name, base);
+		strcpy (trial + base, exts[i]);
+
+		rawlen = ri.FS_LoadFile (trial, (void **)&raw);
+		if (!raw)
+			continue;
+
+		pixels = stbi_load_from_memory (raw, rawlen, &w, &h, &comp, 4);
+		ri.FS_FreeFile (raw);
+		if (!pixels)
+		{
+			ri.Con_Printf (PRINT_ALL, "GL3_TryOverride: bad image %s\n", trial);
+			continue;
+		}
+
+		// register under the ORIGINAL name so lookups keep working
+		image = GL3_LoadPic (name, pixels, w, h, type, 32);
+		stbi_image_free (pixels);
+
+		// preserve the original logical size for texcoords / HUD layout
+		if (orig_w > 0 && orig_h > 0)
+		{
+			image->width = orig_w;
+			image->height = orig_h;
+		}
+		return image;
+	}
+	return NULL;
+}
+
 image_t *GL3_FindImage (char *name, imagetype_t type)
 {
 	image_t	*image;
@@ -696,13 +764,32 @@ image_t *GL3_FindImage (char *name, imagetype_t type)
 	if (!strcmp (name + len - 4, ".pcx"))
 	{
 		LoadPCX (name, &pic, &palette, &width, &height);
-		if (!pic)
-			return NULL;
-		image = GL3_LoadPic (name, pic, width, height, type, 8);
+		if (pic)
+			image = GL3_TryOverride (name, type, width, height);
+		else
+			image = GL3_TryOverride (name, type, 0, 0);
+		if (!image)
+		{
+			if (!pic)
+				return NULL;
+			image = GL3_LoadPic (name, pic, width, height, type, 8);
+		}
 	}
 	else if (!strcmp (name + len - 4, ".wal"))
 	{
-		image = LoadWAL (name);
+		// the .wal header supplies the logical size even when overridden
+		miptex_t	*mt = NULL;
+		int			orig_w = 0, orig_h = 0;
+
+		if (ri.FS_LoadFile (name, (void **)&mt) > 0 && mt)
+		{
+			orig_w = LittleLong (mt->width);
+			orig_h = LittleLong (mt->height);
+			ri.FS_FreeFile (mt);
+		}
+		image = GL3_TryOverride (name, type, orig_w, orig_h);
+		if (!image)
+			image = LoadWAL (name);
 	}
 	else if (!strcmp (name + len - 4, ".tga"))
 	{

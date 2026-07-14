@@ -142,6 +142,7 @@ extern cvar_t	*gl_2dscale;
 extern cvar_t	*gl_modulate;	// registered lazily in gl3_surf.c
 extern cvar_t	*gl_anisotropy;
 extern cvar_t	*gl_shadows;		// soft blob shadows under entities
+extern cvar_t	*gl_retexture;		// hi-res .png/.tga/.jpg texture overrides
 extern cvar_t	*gl_msaa;			// gl3_post.c
 extern cvar_t	*gl_renderscale;
 extern cvar_t	*gl_bloom;
