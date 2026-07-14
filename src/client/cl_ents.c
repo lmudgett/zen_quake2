@@ -722,6 +722,8 @@ void CL_ParseFrame (void)
 
 	// read areabits
 	len = MSG_ReadByte (&net_message);
+	if (len < 0 || (size_t)len > sizeof(cl.frame.areabits))
+		Com_Error (ERR_DROP, "CL_ParseFrame: bad areabits length %i", len);
 	MSG_ReadData (&net_message, &cl.frame.areabits, len);
 
 	// read playerinfo
@@ -794,7 +796,7 @@ struct model_s *S_RegisterSexedModel (entity_state_t *ent, char *base)
 		if (p)
 		{
 			p += 1;
-			strcpy(model, p);
+			Q_strlcpy(model, p, sizeof(model));
 			p = strchr(model, '/');
 			if (p)
 				*p = 0;

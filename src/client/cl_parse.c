@@ -219,6 +219,10 @@ void CL_ParseDownload (void)
 		return;
 	}
 
+	// the block must lie entirely within the received packet
+	if (size < 0 || net_message.readcount + size > net_message.cursize)
+		Com_Error (ERR_DROP, "CL_ParseDownload: bad block size %i", size);
+
 	// open the file if not opened yet
 	if (!cls.download)
 	{
@@ -415,7 +419,7 @@ void CL_LoadClientinfo (clientinfo_t *ci, char *s)
 	else
 	{
 		// isolate the model name
-		strcpy (model_name, s);
+		Q_strlcpy (model_name, s, sizeof(model_name));
 		t = strstr(model_name, "/");
 		if (!t)
 			t = strstr(model_name, "\\");
@@ -424,7 +428,7 @@ void CL_LoadClientinfo (clientinfo_t *ci, char *s)
 		*t = 0;
 
 		// isolate the skin name
-		strcpy (skin_name, s + strlen(model_name) + 1);
+		Q_strlcpy (skin_name, s + strlen(model_name) + 1, sizeof(skin_name));
 
 		// model file
 		Com_sprintf (model_filename, sizeof(model_filename), "players/%s/tris.md2", model_name);
