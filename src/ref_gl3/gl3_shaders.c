@@ -153,10 +153,9 @@ static const char *vtxWarp =
 	"in vec3 a_pos;\n"
 	"in vec2 a_uv;\n"				// RAW (undivided) surface texcoords
 	"uniform mat4 u_mvp;\n"
-	"uniform float u_scroll;\n"		// SURF_FLOWING, raw units
 	"out vec2 v_uv;\n"
 	"void main() {\n"
-	"    v_uv = a_uv + vec2(u_scroll * 64.0, 0.0);\n"
+	"    v_uv = a_uv;\n"
 	"    gl_Position = u_mvp * vec4(a_pos, 1.0);\n"
 	"}\n";
 
@@ -168,10 +167,13 @@ static const char *fragWarp =
 	"uniform float u_gamma;\n"
 	"uniform float u_intensity;\n"
 	"uniform float u_alpha;\n"		// translucent water (TRANS33/66)
+	"uniform float u_scroll;\n"		// SURF_FLOWING, raw units
 	"out vec4 frag;\n"
 	"void main() {\n"
+	// id's EmitWaterPolys: warp from the UNSCROLLED coords, then scroll s,
+	// then normalize by /64
 	"    vec2 w;\n"
-	"    w.x = v_uv.x + sin(v_uv.y * 0.125 + u_time) * 8.0;\n"
+	"    w.x = v_uv.x + sin(v_uv.y * 0.125 + u_time) * 8.0 + u_scroll;\n"
 	"    w.y = v_uv.y + sin(v_uv.x * 0.125 + u_time) * 8.0;\n"
 	"    w /= 64.0;\n"
 	"    vec4 t = texture(u_tex, w);\n"

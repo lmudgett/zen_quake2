@@ -739,6 +739,13 @@ static float GL3_FlowScroll (void)
 	return scroll ? scroll : -64.0f;
 }
 
+// flowing WATER scrolls much faster than conveyor walls: id's EmitWaterPolys
+// cycles 0..-64 raw units every 2 seconds, added before the /64 normalize
+static float GL3_FlowScrollWarp (void)
+{
+	return -64.0f * ((r_newrefdef.time * 0.5f) - (int)(r_newrefdef.time * 0.5f));
+}
+
 void GL3_DrawWorld (void)
 {
 	int		i;
@@ -823,12 +830,34 @@ void GL3_DrawWorld (void)
 		glUniform1f (gl3_prog3d.u_scroll, 0.0f);
 }
 
+// a turb surface draws blended if the texinfo asks for it (TRANS33/66) or,
+// for plain water/slime, whenever gl_wateralpha lowers it below opaque.
+// Lava is never blended (flagged SURF_DRAWLAVA at load).
+static qboolean GL3_TurbTranslucent (const msurface_t *surf)
+{
+	if (surf->texinfo && (surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66)))
+		return true;
+	if (surf->flags & SURF_DRAWLAVA)
+		return false;
+	return gl_wateralpha && gl_wateralpha->value < 1.0f;
+}
+
+static float GL3_TurbAlpha (const msurface_t *surf)
+{
+	if (surf->texinfo && (surf->texinfo->flags & SURF_TRANS33))
+		return 0.33f;
+	if (surf->texinfo && (surf->texinfo->flags & SURF_TRANS66))
+		return 0.66f;
+	return gl_wateralpha->value;
+}
+
 /*
 =================
 GL3_DrawWater
 
 Turb (water/lava/slime) surfaces: raw texcoords warped per-fragment by the
-warp shader. Opaque unless the texinfo is also flagged translucent.
+warp shader. Opaque unless the texinfo is flagged translucent or
+gl_wateralpha is below 1 (lava always stays opaque).
 =================
 */
 void GL3_DrawWater (const float *viewproj, float time)
@@ -857,11 +886,11 @@ void GL3_DrawWater (const float *viewproj, float time)
 			continue;
 		if (!(surf->flags & SURF_DRAWTURB))
 			continue;
-		if (surf->texinfo && (surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66)))
+		if (GL3_TurbTranslucent (surf))
 			continue;			// translucent water: blended pass below
 
 		glUniform1f (gl3_prog_warp.u_scroll,
-			(surf->texinfo && (surf->texinfo->flags & SURF_FLOWING)) ? GL3_FlowScroll () : 0.0f);
+			(surf->texinfo && (surf->texinfo->flags & SURF_FLOWING)) ? GL3_FlowScrollWarp () : 0.0f);
 
 		img = surf->texinfo ? surf->texinfo->image : NULL;
 		if (!img)
@@ -942,11 +971,18 @@ void GL3_DrawWorldTranslucent (void)
 			continue;
 		if (!(surf->flags & SURF_DRAWTURB))
 			continue;
-		if (!surf->texinfo || !(surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66)))
+		if (!GL3_TurbTranslucent (surf))
 			continue;
 
-		glUniform1f (gl3_prog_warp.u_alpha,
-			(surf->texinfo->flags & SURF_TRANS33) ? 0.33f : 0.66f);
+		glUniform1f (gl3_prog_warp.u_alpha, GL3_TurbAlpha (surf));
+		glUniform1f (gl3_prog_warp.u_scroll,
+			(surf->texinfo && (surf->texinfo->flags & SURF_FLOWING)) ? GL3_FlowScrollWarp () : 0.0f);
+		// id's inverse-intensity convention applies only to TRANS surfaces;
+		// gl_wateralpha-blended liquid was opaque (intensity boosted) in
+		// vanilla, so keep its original brightness
+		glUniform1f (gl3_prog_warp.u_intensity,
+			(surf->texinfo && (surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66)))
+				? 1.0f : (gl_intensity ? gl_intensity->value : 1.0f));
 
 		img = surf->texinfo->image ? surf->texinfo->image : r_notexture;
 		GL3_Bind (img->texnum);
@@ -1107,14 +1143,16 @@ void GL3_DrawBrushModel (entity_t *e, const float *viewproj)
 			if (!(surf->flags & SURF_DRAWTURB))
 				continue;
 
-			trans = surf->texinfo && (surf->texinfo->flags & (SURF_TRANS33 | SURF_TRANS66));
+			glUniform1f (gl3_prog_warp.u_scroll,
+				(surf->texinfo && (surf->texinfo->flags & SURF_FLOWING)) ? GL3_FlowScrollWarp () : 0.0f);
+
+			trans = GL3_TurbTranslucent (surf);
 			if (trans)
 			{
 				glEnable (GL_BLEND);
 				glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 				glDepthMask (GL_FALSE);
-				glUniform1f (gl3_prog_warp.u_alpha,
-					(surf->texinfo->flags & SURF_TRANS33) ? 0.33f : 0.66f);
+				glUniform1f (gl3_prog_warp.u_alpha, GL3_TurbAlpha (surf));
 			}
 
 			img = surf->texinfo ? surf->texinfo->image : NULL;

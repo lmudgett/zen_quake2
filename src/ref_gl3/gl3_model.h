@@ -25,6 +25,7 @@ typedef struct
 #define	SURF_PLANEBACK		2
 #define	SURF_DRAWSKY		4
 #define SURF_DRAWTURB		0x10
+#define SURF_DRAWLAVA		0x20	// turb surface with a lava texture: never gl_wateralpha-blended
 #define SURF_DRAWBACKGROUND	0x40
 #define SURF_UNDERWATER		0x80
 

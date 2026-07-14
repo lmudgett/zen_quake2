@@ -653,6 +653,10 @@ static void Mod_LoadFaces (lump_t *l)
 		if (out->texinfo->flags & SURF_WARP)
 		{
 			out->flags |= SURF_DRAWTURB;
+			// lava looks wrong translucent (and vanilla kept it solid), so
+			// flag it here and leave it out of the gl_wateralpha blend pass
+			if (out->texinfo->image && strstr (out->texinfo->image->name, "lava"))
+				out->flags |= SURF_DRAWLAVA;
 			for (i=0 ; i<2 ; i++)
 			{
 				out->extents[i] = 16384;
