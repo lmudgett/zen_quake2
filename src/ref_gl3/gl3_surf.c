@@ -226,10 +226,55 @@ void GL3_PushDlights (void)
 		gl_dynamic = ri.Cvar_Get ("gl_dynamic", "1", 0);
 	if (!gl_dynamic->value || !r_worldmodel)
 		return;
+	if (gl_dynamic->value == 2)
+		return;		// per-pixel mode: no CPU lightmap rebuilds needed
 
 	dl = r_newrefdef.dlights;
 	for (i = 0; i < r_newrefdef.num_dlights; i++, dl++)
 		GL3_MarkLights (dl, 1 << i, r_worldmodel->nodes);
+}
+
+/*
+=================
+GL3_UploadDlights
+
+gl_dynamic 2: feed this frame's dynamic lights to the world shader for
+per-pixel accumulation. `move` shifts the light origins into an inline
+bmodel's surface space (world surfaces pass vec3_origin).
+=================
+*/
+void GL3_UploadDlights (const vec3_t move)
+{
+	float		pos[MAX_DLIGHTS * 4];
+	float		col[MAX_DLIGHTS * 3];
+	dlight_t	*dl;
+	int			i, n;
+
+	if (!gl_dynamic)
+		gl_dynamic = ri.Cvar_Get ("gl_dynamic", "1", 0);
+
+	n = (gl_dynamic->value == 2) ? r_newrefdef.num_dlights : 0;
+	if (n > MAX_DLIGHTS)
+		n = MAX_DLIGHTS;
+
+	dl = r_newrefdef.dlights;
+	for (i = 0; i < n; i++, dl++)
+	{
+		pos[i * 4 + 0] = dl->origin[0] - move[0];
+		pos[i * 4 + 1] = dl->origin[1] - move[1];
+		pos[i * 4 + 2] = dl->origin[2] - move[2];
+		pos[i * 4 + 3] = dl->intensity;
+		col[i * 3 + 0] = dl->color[0];
+		col[i * 3 + 1] = dl->color[1];
+		col[i * 3 + 2] = dl->color[2];
+	}
+
+	glUniform1i (gl3_prog3d.u_num_dlights, n);
+	if (n)
+	{
+		glUniform4fv (gl3_prog3d.u_dlights, n, pos);
+		glUniform3fv (gl3_prog3d.u_dlcolors, n, col);
+	}
 }
 
 // decode a surface's stored light samples (+ lightstyles) into RGBA texels
@@ -776,6 +821,7 @@ void GL3_DrawWorld (void)
 	R_RecursiveWorldNode (r_worldmodel->nodes);
 
 	glUniform1f (gl3_prog3d.u_alpha, 1.0f);
+	GL3_UploadDlights (vec3_origin);	// per-pixel dlights (gl_dynamic 2)
 	glBindVertexArray (world_vao);
 
 	surf = r_worldmodel->surfaces;
@@ -940,6 +986,7 @@ void GL3_DrawWorldTranslucent (void)
 	glUseProgram (gl3_prog3d.program);
 	glUniformMatrix4fv (gl3_prog3d.u_mvp, 1, GL_FALSE, gl3_viewproj);	// entities may have changed it
 	glUniform1i (gl3_prog3d.u_lm_enabled, 0);
+	GL3_UploadDlights (vec3_origin);	// bmodels may have left theirs bound
 	glEnable (GL_BLEND);
 	glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glDepthMask (GL_FALSE);
@@ -1131,6 +1178,7 @@ void GL3_DrawBrushModel (entity_t *e, const float *viewproj)
 
 	glUseProgram (gl3_prog3d.program);
 	glUniformMatrix4fv (gl3_prog3d.u_mvp, 1, GL_FALSE, mvp);
+	GL3_UploadDlights (e->origin);	// shift lights into this bmodel's space
 	glBindVertexArray (world_vao);
 
 	// RF_TRANSLUCENT bmodels (ghost doors/platforms) blend whole at 0.25

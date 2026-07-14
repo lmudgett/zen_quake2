@@ -45,6 +45,11 @@ static GLuint	rb_scene_depth;		// depth when rendering directly (no MSAA)
 static GLuint	fbo_bloom[2];
 static GLuint	tex_bloom[2];
 
+// depth copy for soft particles (sampling the live depth attachment while
+// it is bound for rendering would be undefined)
+static GLuint	fbo_depthcopy;
+static GLuint	tex_depthcopy;
+
 static int		fb_width, fb_height;	// current scene FBO size
 static int		fb_samples;
 static int		bloom_w, bloom_h;
@@ -127,6 +132,8 @@ static void GL3_Post_DestroyTargets (void)
 	if (rb_scene_depth)	{ glDeleteRenderbuffers (1, &rb_scene_depth); rb_scene_depth = 0; }
 	if (fbo_bloom[0])	{ glDeleteFramebuffers (2, fbo_bloom); fbo_bloom[0] = fbo_bloom[1] = 0; }
 	if (tex_bloom[0])	{ glDeleteTextures (2, tex_bloom); tex_bloom[0] = tex_bloom[1] = 0; }
+	if (fbo_depthcopy)	{ glDeleteFramebuffers (1, &fbo_depthcopy); fbo_depthcopy = 0; }
+	if (tex_depthcopy)	{ glDeleteTextures (1, &tex_depthcopy); tex_depthcopy = 0; }
 	fb_width = fb_height = fb_samples = 0;
 }
 
@@ -212,9 +219,39 @@ static void GL3_Post_CreateTargets (void)
 		glFramebufferTexture2D (GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex_bloom[i], 0);
 	}
 
+	// depth copy target for soft particles
+	glGenTextures (1, &tex_depthcopy);
+	glBindTexture (GL_TEXTURE_2D, tex_depthcopy);
+	glTexImage2D (GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, w, h, 0,
+		GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, NULL);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glGenFramebuffers (1, &fbo_depthcopy);
+	glBindFramebuffer (GL_FRAMEBUFFER, fbo_depthcopy);
+	glFramebufferTexture2D (GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, tex_depthcopy, 0);
+	glDrawBuffer (GL_NONE);
+	glReadBuffer (GL_NONE);
+
 	glBindFramebuffer (GL_FRAMEBUFFER, 0);
 	glBindTexture (GL_TEXTURE_2D, 0);
 	gl3state.currenttexture = -1;
+}
+
+// blit the current scene depth into a sampleable texture and re-bind the
+// scene target; returns the depth texture (used by soft particles)
+GLuint GL3_Post_ResolveDepth (void)
+{
+	GLuint	src = fb_samples ? fbo_ms : fbo_scene;
+
+	glBindFramebuffer (GL_READ_FRAMEBUFFER, src);
+	glBindFramebuffer (GL_DRAW_FRAMEBUFFER, fbo_depthcopy);
+	glBlitFramebuffer (0, 0, fb_width, fb_height, 0, 0, fb_width, fb_height,
+		GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+	glBindFramebuffer (GL_FRAMEBUFFER, src);
+
+	return tex_depthcopy;
 }
 
 // ------------------------------------------------------------------ frame

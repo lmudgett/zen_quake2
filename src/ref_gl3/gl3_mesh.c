@@ -221,6 +221,7 @@ static vec3_t	shadelight;
 //===================================================================
 
 static vec3_t	pointcolor;
+static vec3_t	gl3_lightspot;		// where the light trace hit (blob shadows)
 
 static int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 {
@@ -262,6 +263,8 @@ static int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 		return -1;		// didn't hit anything
 
 	// check for impact on this node
+	VectorCopy (mid, gl3_lightspot);	// ground point for the blob shadow
+
 	surf = r_worldmodel->surfaces + node->firstsurface;
 	for (i = 0; i < node->numsurfaces; i++, surf++)
 	{
@@ -428,6 +431,77 @@ static void GL3_EmitVert (const gl3_meshvert_t *v)
 {
 	if (s_numverts < MAX_MESH_VERTS)
 		s_meshverts[s_numverts++] = *v;
+}
+
+//===================================================================
+// GL3_DrawBlobShadow -- soft dark disc under the entity at the point the
+// light trace hit (a modern, artifact-free take on gl_shadows; id's
+// projected-polygon shadows z-fought and clipped through walls)
+//===================================================================
+
+#define BLOB_SEGS 16
+
+static void GL3_DrawBlobShadow (entity_t *e, const float *viewproj)
+{
+	gl3_meshvert_t	v[BLOB_SEGS * 3];
+	float			h = e->origin[2] - gl3_lightspot[2];
+	float			alpha, radius, z;
+	int				i, n = 0;
+
+	if (h < 0.0f || h > 96.0f)
+		return;					// airborne: no ground beneath, fade out
+	alpha = 0.4f * (1.0f - h / 96.0f);
+	radius = 16.0f + h * 0.08f;	// spread slightly as the caster rises
+	z = gl3_lightspot[2] + 1.0f;
+
+	for (i = 0; i < BLOB_SEGS; i++)
+	{
+		float	a0 = (float)i * (2.0f * (float)M_PI / BLOB_SEGS);
+		float	a1 = (float)(i + 1) * (2.0f * (float)M_PI / BLOB_SEGS);
+		int		j;
+
+		v[n].pos[0] = e->origin[0];
+		v[n].pos[1] = e->origin[1];
+		v[n].pos[2] = z;
+		n++;
+		v[n].pos[0] = e->origin[0] + cosf (a1) * radius;
+		v[n].pos[1] = e->origin[1] + sinf (a1) * radius;
+		v[n].pos[2] = z;
+		n++;
+		v[n].pos[0] = e->origin[0] + cosf (a0) * radius;
+		v[n].pos[1] = e->origin[1] + sinf (a0) * radius;
+		v[n].pos[2] = z;
+		n++;
+
+		for (j = n - 3; j < n; j++)
+		{
+			v[j].st[0] = v[j].st[1] = 0.0f;
+			v[j].color[0] = v[j].color[1] = v[j].color[2] = 0.0f;
+			// soft edge: center opaque, rim transparent
+			v[j].color[3] = (j == n - 3) ? alpha : 0.0f;
+		}
+	}
+
+	glUseProgram (gl3_prog_alias.program);
+	glUniformMatrix4fv (gl3_prog_alias.u_mvp, 1, GL_FALSE, viewproj);
+	glUniform1f (gl3_prog_alias.u_intensity, 1.0f);
+	glUniform1f (gl3_prog_alias.u_alphacut, 0.0f);
+	GL3_Bind (white_tex);
+
+	glEnable (GL_BLEND);
+	glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glDepthMask (GL_FALSE);
+	glDisable (GL_CULL_FACE);
+
+	glBindVertexArray (mesh_vao);
+	glBindBuffer (GL_ARRAY_BUFFER, mesh_vbo);
+	glBufferData (GL_ARRAY_BUFFER, n * sizeof(gl3_meshvert_t), v, GL_STREAM_DRAW);
+	glDrawArrays (GL_TRIANGLES, 0, n);
+	glBindVertexArray (0);
+
+	glEnable (GL_CULL_FACE);
+	glDepthMask (GL_TRUE);
+	glDisable (GL_BLEND);
 }
 
 //===================================================================
@@ -787,6 +861,12 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 
 	if (shell || (e->flags & RF_TRANSLUCENT))
 		glDisable (GL_BLEND);
+
+	// soft blob shadow: only entities whose lighting traced the ground
+	// this call (non-shell, non-fullbright), and never the view weapon
+	if (gl_shadows && gl_shadows->value && !shell
+		&& !(e->flags & (RF_FULLBRIGHT | RF_WEAPONMODEL | RF_TRANSLUCENT | RF_DEPTHHACK | RF_BEAM)))
+		GL3_DrawBlobShadow (e, viewproj);
 }
 
 /*

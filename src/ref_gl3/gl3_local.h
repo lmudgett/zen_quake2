@@ -90,6 +90,9 @@ typedef struct
 	GLint	u_lm_enabled;	// int (0/1)
 	GLint	u_alpha;		// float surface alpha (1 opaque)
 	GLint	u_scroll;		// SURF_FLOWING texture scroll
+	GLint	u_num_dlights;	// gl_dynamic 2: per-pixel dynamic lights
+	GLint	u_dlights;		// vec4[32] xyz + radius
+	GLint	u_dlcolors;		// vec3[32]
 } gl3prog3d_t;
 
 extern gl3prog3d_t	gl3_prog3d;
@@ -138,6 +141,7 @@ extern cvar_t	*gl_slimealpha;
 extern cvar_t	*gl_2dscale;
 extern cvar_t	*gl_modulate;	// registered lazily in gl3_surf.c
 extern cvar_t	*gl_anisotropy;
+extern cvar_t	*gl_shadows;		// soft blob shadows under entities
 extern cvar_t	*gl_msaa;			// gl3_post.c
 extern cvar_t	*gl_renderscale;
 extern cvar_t	*gl_bloom;
@@ -150,6 +154,7 @@ void  GL3_Post_EndScene (void);		// resolve, bloom, draw to the window
 float GL3_Post_FrameScale (void);	// virtual 2D coords -> scene FBO pixels
 int   GL3_Post_Width (void);
 int   GL3_Post_Height (void);
+GLuint GL3_Post_ResolveDepth (void);	// copy scene depth to a texture (soft particles)
 
 // anisotropic filtering enums (extension is ubiquitous; glad may omit them)
 #ifndef GL_TEXTURE_MAX_ANISOTROPY_EXT
@@ -188,6 +193,7 @@ void GL3_EndBuildingLightmaps (void);
 
 // world rendering (gl3_surf.c)
 void GL3_BuildWorldVBO (void);			// upload all world polys after registration
+void GL3_UploadDlights (const vec3_t move);	// per-pixel dlight uniforms (gl_dynamic 2)
 void GL3_DrawWorld (void);				// draw the visible world this frame
 void GL3_DrawWorldTranslucent (void);	// TRANS33/66 surfaces, blended pass
 void GL3_DrawWater (const float *viewproj, float time);	// turb/warp surfaces
@@ -214,13 +220,16 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj);
 void GL3_DrawSpriteModel (entity_t *e, const float *viewproj);	// SP2 billboards
 void GL3_DrawBeam (entity_t *e, const float *viewproj);		// RF_BEAM cylinders
 
-// particles (gl3_particles.c)
+// particles (gl3_particles.c): instanced billboard quads
 typedef struct
 {
 	GLuint	program;
 	GLint	u_mvp;
-	GLint	u_gamma;
-	GLint	u_psize;		// base point size scaled by 1/w in the shader
+	GLint	u_right;		// camera axes for billboarding
+	GLint	u_up;
+	GLint	u_size;			// half-size, world units
+	GLint	u_soft;			// soft-particle fade (1/range; 0 = off)
+	GLint	u_invdepthsize;	// 1 / scene depth texture size
 } gl3progpart_t;
 extern gl3progpart_t	gl3_prog_part;
 

@@ -35,6 +35,7 @@ GLuint GL3_CompileProgram (const char *vtx, const char *frag)
 	glBindAttribLocation (prog, 1, "a_uv");
 	glBindAttribLocation (prog, 2, "a_lmuv");
 	glBindAttribLocation (prog, 3, "a_color");
+	glBindAttribLocation (prog, 4, "a_ppos");	// per-instance particle center
 	glLinkProgram (prog);
 	glGetProgramiv (prog, GL_LINK_STATUS, &ok);
 	if (!ok)
@@ -85,9 +86,11 @@ static const char *vtx3d =
 	"uniform float u_scroll;\n"		// SURF_FLOWING
 	"out vec2 v_uv;\n"
 	"out vec2 v_lmuv;\n"
+	"out vec3 v_wpos;\n"			// surface-space position for per-pixel dlights
 	"void main() {\n"
 	"    v_uv = a_uv + vec2(u_scroll, 0.0);\n"
 	"    v_lmuv = a_lmuv;\n"
+	"    v_wpos = a_pos;\n"
 	"    gl_Position = u_mvp * vec4(a_pos, 1.0);\n"
 	"}\n";
 
@@ -95,17 +98,29 @@ static const char *frag3d =
 	"#version 330 core\n"
 	"in vec2 v_uv;\n"
 	"in vec2 v_lmuv;\n"
+	"in vec3 v_wpos;\n"
 	"uniform sampler2D u_tex;\n"
 	"uniform sampler2D u_lightmap;\n"
 	"uniform int u_lm_enabled;\n"
 	"uniform float u_intensity;\n"
 	"uniform float u_alpha;\n"
+	"uniform int u_num_dlights;\n"		// gl_dynamic 2: per-pixel dynamic lights
+	"uniform vec4 u_dlights[32];\n"		// xyz = origin (surface space), w = radius
+	"uniform vec3 u_dlcolors[32];\n"
 	"out vec4 frag;\n"
 	"void main() {\n"	// gamma applied once in the post pass, like id's ramp
 	"    vec4 diff = texture(u_tex, v_uv);\n"
 	"    vec3 c = diff.rgb * u_intensity;\n"
-	"    if (u_lm_enabled != 0)\n"
-	"        c *= texture(u_lightmap, v_lmuv).rgb * 2.0;\n"	// overbright
+	"    if (u_lm_enabled != 0) {\n"
+	"        vec3 light = texture(u_lightmap, v_lmuv).rgb * 2.0;\n"	// overbright
+	"        for (int i = 0; i < u_num_dlights; i++) {\n"
+	// smooth per-pixel falloff calibrated against id's lightmap formula
+	// ((radius - cutoff64 - dist) per 255 with the x2 overbright)
+	"            float d = distance(v_wpos, u_dlights[i].xyz);\n"
+	"            light += u_dlcolors[i] * max(u_dlights[i].w - 64.0 - d, 0.0) * (2.0 / 255.0);\n"
+	"        }\n"
+	"        c *= light;\n"
+	"    }\n"
 	"    frag = vec4(c, diff.a * u_alpha);\n"
 	"}\n";
 
@@ -187,29 +202,44 @@ static const char *fragWarp =
 
 gl3progwarp_t	gl3_prog_warp;
 
-// ---- particles (round point sprites, size scaled by distance) ----
+// ---- particles: instanced billboard quads, round + soft-depth faded ----
 static const char *vtxPart =
 	"#version 330 core\n"
-	"in vec3 a_pos;\n"
-	"in vec4 a_color;\n"
+	"in vec2 a_pos;\n"			// quad corner in [-1,1] (per vertex)
+	"in vec3 a_ppos;\n"			// particle center (per instance)
+	"in vec4 a_color;\n"		// particle color (per instance)
 	"uniform mat4 u_mvp;\n"
-	"uniform float u_psize;\n"
+	"uniform vec3 u_right;\n"
+	"uniform vec3 u_up;\n"
+	"uniform float u_size;\n"	// half-size in world units
 	"out vec4 v_color;\n"
+	"out vec2 v_corner;\n"
 	"void main() {\n"
+	"    vec3 w = a_ppos + (u_right * a_pos.x + u_up * a_pos.y) * u_size;\n"
 	"    v_color = a_color;\n"
-	"    gl_Position = u_mvp * vec4(a_pos, 1.0);\n"
-	"    gl_PointSize = clamp(u_psize / gl_Position.w, 2.0, 40.0);\n"	// id min/max point sizes
+	"    v_corner = a_pos;\n"
+	"    gl_Position = u_mvp * vec4(w, 1.0);\n"
 	"}\n";
 
 static const char *fragPart =
 	"#version 330 core\n"
 	"in vec4 v_color;\n"
+	"in vec2 v_corner;\n"
+	"uniform sampler2D u_depth;\n"		// resolved scene depth (soft particles)
+	"uniform vec2 u_invdepthsize;\n"
+	"uniform float u_soft;\n"			// 1 / fade range in world units; 0 = off
 	"out vec4 frag;\n"
 	"void main() {\n"
-	// square untextured points, like id's GL_EXT_point_parameters path.
-	// (no gl_PointCoord round-mask: it reads as (0,0) on some drivers here,
-	// which used to discard every particle fragment)
-	"    frag = v_color;\n"
+	"    float a = v_color.a * (1.0 - smoothstep(0.55, 1.0, length(v_corner)));\n"
+	"    if (u_soft > 0.0) {\n"
+	// fade where the particle nears solid geometry (near 4 / far 4096)
+	"        float zs = texture(u_depth, gl_FragCoord.xy * u_invdepthsize).r;\n"
+	"        float lin_s = 32768.0 / (4100.0 - (zs * 2.0 - 1.0) * 4092.0);\n"
+	"        float lin_f = 32768.0 / (4100.0 - (gl_FragCoord.z * 2.0 - 1.0) * 4092.0);\n"
+	"        a *= clamp((lin_s - lin_f) * u_soft, 0.0, 1.0);\n"
+	"    }\n"
+	"    if (a <= 0.004) discard;\n"
+	"    frag = vec4(v_color.rgb, a);\n"
 	"}\n";
 
 gl3progpart_t	gl3_prog_part;
@@ -232,9 +262,13 @@ void GL3_InitShaders (void)
 	gl3_prog3d.u_lm_enabled = glGetUniformLocation (gl3_prog3d.program, "u_lm_enabled");
 	gl3_prog3d.u_alpha = glGetUniformLocation (gl3_prog3d.program, "u_alpha");
 	gl3_prog3d.u_scroll = glGetUniformLocation (gl3_prog3d.program, "u_scroll");
+	gl3_prog3d.u_num_dlights = glGetUniformLocation (gl3_prog3d.program, "u_num_dlights");
+	gl3_prog3d.u_dlights = glGetUniformLocation (gl3_prog3d.program, "u_dlights");
+	gl3_prog3d.u_dlcolors = glGetUniformLocation (gl3_prog3d.program, "u_dlcolors");
 	glUseProgram (gl3_prog3d.program);
 	glUniform1f (gl3_prog3d.u_alpha, 1.0f);
 	glUniform1f (gl3_prog3d.u_scroll, 0.0f);
+	glUniform1i (gl3_prog3d.u_num_dlights, 0);
 	glUniform1i (glGetUniformLocation (gl3_prog3d.program, "u_tex"), 0);		// diffuse on unit 0
 	glUniform1i (glGetUniformLocation (gl3_prog3d.program, "u_lightmap"), 1);	// lightmap on unit 1
 
@@ -249,8 +283,13 @@ void GL3_InitShaders (void)
 
 	gl3_prog_part.program = GL3_CompileProgram (vtxPart, fragPart);
 	gl3_prog_part.u_mvp = glGetUniformLocation (gl3_prog_part.program, "u_mvp");
-	gl3_prog_part.u_gamma = glGetUniformLocation (gl3_prog_part.program, "u_gamma");
-	gl3_prog_part.u_psize = glGetUniformLocation (gl3_prog_part.program, "u_psize");
+	gl3_prog_part.u_right = glGetUniformLocation (gl3_prog_part.program, "u_right");
+	gl3_prog_part.u_up = glGetUniformLocation (gl3_prog_part.program, "u_up");
+	gl3_prog_part.u_size = glGetUniformLocation (gl3_prog_part.program, "u_size");
+	gl3_prog_part.u_soft = glGetUniformLocation (gl3_prog_part.program, "u_soft");
+	gl3_prog_part.u_invdepthsize = glGetUniformLocation (gl3_prog_part.program, "u_invdepthsize");
+	glUseProgram (gl3_prog_part.program);
+	glUniform1i (glGetUniformLocation (gl3_prog_part.program, "u_depth"), 0);
 
 	gl3_prog_warp.program = GL3_CompileProgram (vtxWarp, fragWarp);
 	gl3_prog_warp.u_mvp = glGetUniformLocation (gl3_prog_warp.program, "u_mvp");
