@@ -364,6 +364,17 @@ void GL3_BeginBuildingLightmaps (model_t *m)
 {
 	int	i;
 
+	// release the previous map's lightmap pages before allocating new ones
+	// (current_lightmap_texture still holds the prior map's page count here)
+	for (i = 1; i < gl_lms.current_lightmap_texture; i++)
+	{
+		if (gl3_lightmap_tex[i])
+		{
+			glDeleteTextures (1, &gl3_lightmap_tex[i]);
+			gl3_lightmap_tex[i] = 0;
+		}
+	}
+
 	memset (gl_lms.allocated, 0, sizeof(gl_lms.allocated));
 	r_framecount = 1;
 	r_oldviewcluster = r_oldviewcluster2 = -2;	// force a PVS re-mark on the new map
@@ -508,6 +519,10 @@ void GL3_BuildWorldVBO (void)
 	float	*data, *dst;
 	msurface_t	*surf;
 
+	// free the previous map's world buffers before building (or bailing)
+	if (world_vbo) { glDeleteBuffers (1, &world_vbo); world_vbo = 0; }
+	if (world_vao) { glDeleteVertexArrays (1, &world_vao); world_vao = 0; }
+
 	if (!r_worldmodel)
 		return;
 
@@ -549,6 +564,29 @@ void GL3_BuildWorldVBO (void)
 
 	ri.Con_Printf (PRINT_ALL, "world VBO: %d verts, %d surfaces\n",
 		world_numverts, r_worldmodel->numsurfaces);
+}
+
+// Release every GL object owned by this module (world geometry and all
+// lightmap pages, static and dynamic). Called at renderer shutdown; the
+// per-map paths free the previous map's objects on their own.
+void GL3_ShutdownSurf (void)
+{
+	int	i;
+
+	if (world_vbo) { glDeleteBuffers (1, &world_vbo); world_vbo = 0; }
+	if (world_vao) { glDeleteVertexArrays (1, &world_vao); world_vao = 0; }
+
+	for (i = 1; i < gl_lms.current_lightmap_texture; i++)
+	{
+		if (gl3_lightmap_tex[i])
+		{
+			glDeleteTextures (1, &gl3_lightmap_tex[i]);
+			gl3_lightmap_tex[i] = 0;
+		}
+	}
+	gl_lms.current_lightmap_texture = 1;
+
+	if (gl3_lightmap_dyn) { glDeleteTextures (1, &gl3_lightmap_dyn); gl3_lightmap_dyn = 0; }
 }
 
 // ------------------------------------------------------------------ culling

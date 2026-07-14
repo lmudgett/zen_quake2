@@ -215,6 +215,7 @@ void GL3_EndBuildingLightmaps (void);
 
 // world rendering (gl3_surf.c)
 void GL3_BuildWorldVBO (void);			// upload all world polys after registration
+void GL3_ShutdownSurf (void);			// free world VBO/VAO and lightmap textures
 void GL3_UploadDlights (const vec3_t move);	// per-pixel dlight uniforms (gl_dynamic 2)
 void GL3_DrawWorld (void);				// draw the visible world this frame
 void GL3_DrawWorldTranslucent (void);	// TRANS33/66 surfaces, blended pass

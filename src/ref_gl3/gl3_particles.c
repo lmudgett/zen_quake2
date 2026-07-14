@@ -12,6 +12,9 @@ static GLuint	part_inst_vbo;		// streamed per-particle data
 
 typedef struct { float pos[3]; float color[4]; } partinst_t;
 
+static partinst_t	*s_partbuf;		// grow-on-demand instance scratch
+static int			s_partbuf_max;
+
 void GL3_InitParticles (void)
 {
 	static const float corners[8] = { -1,-1,  1,-1,  -1,1,  1,1 };
@@ -43,6 +46,9 @@ void GL3_ShutdownParticles (void)
 	if (part_inst_vbo)   glDeleteBuffers (1, &part_inst_vbo);
 	if (part_corner_vbo) glDeleteBuffers (1, &part_corner_vbo);
 	if (part_vao)        glDeleteVertexArrays (1, &part_vao);
+	free (s_partbuf);
+	s_partbuf = NULL;
+	s_partbuf_max = 0;
 }
 
 void GL3_DrawParticles (const float *viewproj)
@@ -56,7 +62,15 @@ void GL3_DrawParticles (const float *viewproj)
 	if (n <= 0)
 		return;
 
-	buf = malloc (n * sizeof(partinst_t));
+	// reuse a persistent scratch buffer instead of malloc/free every frame
+	if (n > s_partbuf_max)
+	{
+		free (s_partbuf);
+		s_partbuf = malloc (n * sizeof(partinst_t));
+		if (!s_partbuf) { s_partbuf_max = 0; return; }
+		s_partbuf_max = n;
+	}
+	buf = s_partbuf;
 
 	for (i = 0; i < n; i++)
 	{
@@ -102,6 +116,4 @@ void GL3_DrawParticles (const float *viewproj)
 
 	glDepthMask (GL_TRUE);
 	glDisable (GL_BLEND);
-
-	free (buf);
 }

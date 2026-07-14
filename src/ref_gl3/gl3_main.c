@@ -399,6 +399,7 @@ static void GL3_Shutdown (void)
 	ri.Cmd_RemoveCommand ("modellist");
 	ri.Cmd_RemoveCommand ("screenshot");
 	GL3_Mod_FreeAll ();
+	GL3_ShutdownSurf ();
 	GL3_ShutdownMesh ();
 	GL3_ShutdownParticles ();
 	GL3_ShutdownSky ();
