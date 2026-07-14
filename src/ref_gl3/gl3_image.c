@@ -13,6 +13,15 @@
 #define STBI_ONLY_JPEG
 #define STBI_ONLY_TGA
 #define STBI_NO_STDIO
+// stb's default cap is 1<<24 per side; a hostile override texture could
+// still demand a multi-GB decode. No real texture pack exceeds GL limits.
+#define STBI_MAX_DIMENSIONS 16384
+// zero-init stb allocations: closes CVE-2023-45663 (truncated TGA leaks
+// uninitialized heap into pixels; unfixed upstream in v2.30) without
+// modifying the pristine vendored header
+#define STBI_MALLOC(sz)        calloc(1, (sz))
+#define STBI_REALLOC(p, newsz) realloc((p), (newsz))
+#define STBI_FREE(p)           free(p)
 #include "stb_image.h"
 
 unsigned	d_8to24table[256];
@@ -602,6 +611,8 @@ image_t *GL3_LoadPic (char *name, byte *pic, int width, int height, imagetype_t 
 
 	s = width * height;
 	rgba = malloc (s * 4);
+	if (!rgba)
+		ri.Sys_Error (ERR_DROP, "GL3_LoadPic: out of memory (%dx%d %s)", width, height, name);
 
 	if (bits == 8)
 	{
