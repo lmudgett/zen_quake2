@@ -213,12 +213,12 @@ void FindNextChunk(char *name)
 	{
 		data_p=last_chunk;
 
-		if (data_p >= iff_end)
-		{	// didn't find the chunk
+		if (data_p + 8 > iff_end)
+		{	// no room for another chunk header (id + length)
 			data_p = NULL;
 			return;
 		}
-		
+
 		data_p += 4;
 		iff_chunk_len = GetLittleLong();
 		if (iff_chunk_len < 0)
@@ -280,7 +280,7 @@ wavinfo_t GetWavinfo (char *name, byte *wav, int wavlength)
 
 // find "RIFF" chunk
 	FindChunk("RIFF");
-	if (!(data_p && !strncmp(data_p+8, "WAVE", 4)))
+	if (!(data_p && data_p + 12 <= iff_end && !strncmp(data_p+8, "WAVE", 4)))
 	{
 		Com_Printf("Missing RIFF/WAVE chunks\n");
 		return info;

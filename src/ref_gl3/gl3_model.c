@@ -343,6 +343,7 @@ model_t *GL3_Mod_ForName (char *name, qboolean crash)
 */
 
 static byte	*mod_base;
+static int	mod_lightdatasize;	// bytes in the lighting lump (bounds face lightofs)
 
 
 /*
@@ -355,9 +356,11 @@ static void Mod_LoadLighting (lump_t *l)
 	if (!l->filelen)
 	{
 		loadmodel->lightdata = NULL;
+		mod_lightdatasize = 0;
 		return;
 	}
 	loadmodel->lightdata = Hunk_Alloc ( l->filelen);
+	mod_lightdatasize = l->filelen;
 	memcpy (loadmodel->lightdata, mod_base + l->fileofs, l->filelen);
 }
 
@@ -502,6 +505,9 @@ static void Mod_LoadEdges (lump_t *l)
 	{
 		out->v[0] = (unsigned short)LittleShort(in->v[0]);
 		out->v[1] = (unsigned short)LittleShort(in->v[1]);
+		if ((int)out->v[0] >= loadmodel->numvertexes
+			|| (int)out->v[1] >= loadmodel->numvertexes)
+			ri.Sys_Error (ERR_DROP, "Mod_LoadEdges: bad vertex index in %s", loadmodel->name);
 	}
 }
 
@@ -644,11 +650,18 @@ static void Mod_LoadFaces (lump_t *l)
 		out->flags = 0;
 		out->polys = NULL;
 
-		planenum = LittleShort(in->planenum);
+		// the surface's edge run must lie within the surfedges lump
+		if (out->numedges < 0 || out->firstedge < 0
+			|| out->firstedge > loadmodel->numsurfedges - out->numedges)
+			ri.Sys_Error (ERR_DROP, "Mod_LoadFaces: bad edge range in %s", loadmodel->name);
+
+		planenum = (unsigned short)LittleShort(in->planenum);
 		side = LittleShort(in->side);
 		if (side)
 			out->flags |= SURF_PLANEBACK;
 
+		if (planenum >= loadmodel->numplanes)
+			ri.Sys_Error (ERR_DROP, "Mod_LoadFaces: bad planenum in %s", loadmodel->name);
 		out->plane = loadmodel->planes + planenum;
 
 		ti = LittleShort (in->texinfo);
@@ -665,6 +678,8 @@ static void Mod_LoadFaces (lump_t *l)
 		i = LittleLong(in->lightofs);
 		if (i == -1)
 			out->samples = NULL;
+		else if (i < 0 || i >= mod_lightdatasize)
+			ri.Sys_Error (ERR_DROP, "Mod_LoadFaces: bad lightofs in %s", loadmodel->name);
 		else
 			out->samples = loadmodel->lightdata + i;
 
@@ -753,6 +768,8 @@ static void Mod_LoadNodes (lump_t *l)
 		}
 
 		p = LittleLong(in->planenum);
+		if (p < 0 || p >= loadmodel->numplanes)
+			ri.Sys_Error (ERR_DROP, "Mod_LoadNodes: bad planenum in %s", loadmodel->name);
 		out->plane = loadmodel->planes + p;
 
 		out->firstsurface = LittleShort (in->firstface);
@@ -762,10 +779,20 @@ static void Mod_LoadNodes (lump_t *l)
 		for (j=0 ; j<2 ; j++)
 		{
 			p = LittleLong (in->children[j]);
+			// unchecked, these become raw pointers that Mod_SetParent writes
+			// through (node->parent = ...) -> a write-what-where primitive
 			if (p >= 0)
+			{
+				if (p >= loadmodel->numnodes)
+					ri.Sys_Error (ERR_DROP, "Mod_LoadNodes: bad child node in %s", loadmodel->name);
 				out->children[j] = loadmodel->nodes + p;
+			}
 			else
+			{
+				if ((-1 - p) < 0 || (-1 - p) >= loadmodel->numleafs)
+					ri.Sys_Error (ERR_DROP, "Mod_LoadNodes: bad child leaf in %s", loadmodel->name);
 				out->children[j] = (mnode_t *)(loadmodel->leafs + (-1 - p));
+			}
 		}
 	}
 
@@ -806,9 +833,15 @@ static void Mod_LoadLeafs (lump_t *l)
 		out->cluster = LittleShort(in->cluster);
 		out->area = LittleShort(in->area);
 
-		out->firstmarksurface = loadmodel->marksurfaces +
-			LittleShort(in->firstleafface);
-		out->nummarksurfaces = LittleShort(in->numleaffaces);
+		{
+			unsigned short firstmark = (unsigned short)LittleShort(in->firstleafface);
+			unsigned short nummark   = (unsigned short)LittleShort(in->numleaffaces);
+			// the leaf's marksurface run must lie within the marksurfaces lump
+			if ((int)firstmark + (int)nummark > loadmodel->nummarksurfaces)
+				ri.Sys_Error (ERR_DROP, "Mod_LoadLeafs: bad marksurface range in %s", loadmodel->name);
+			out->firstmarksurface = loadmodel->marksurfaces + firstmark;
+			out->nummarksurfaces = nummark;
+		}
 	}
 }
 
@@ -865,7 +898,12 @@ static void Mod_LoadSurfedges (lump_t *l)
 	loadmodel->numsurfedges = count;
 
 	for ( i=0 ; i<count ; i++)
+	{
 		out[i] = LittleLong (in[i]);
+		// used as edges[out[i]] (out[i]>=0) or edges[-out[i]]; |value| < numedges
+		if (out[i] >= loadmodel->numedges || out[i] <= -loadmodel->numedges)
+			ri.Sys_Error (ERR_DROP, "Mod_LoadSurfedges: bad edge index in %s", loadmodel->name);
+	}
 }
 
 

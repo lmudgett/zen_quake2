@@ -167,6 +167,12 @@ void CMod_LoadSubmodels (lump_t *l)
 			out->origin[j] = LittleFloat (in->origin[j]);
 		}
 		out->headnode = LittleLong (in->headnode);
+		// headnode is used directly as a trace root: it is either a node
+		// index (>=0) or a leaf-encoded value (-1-leafnum). numnodes is not
+		// yet loaded here (nodes load after submodels), so bound the upper
+		// end against MAX_MAP_NODES; the lower end against the loaded numleafs.
+		if (out->headnode >= MAX_MAP_NODES || out->headnode < -numleafs)
+			Com_Error (ERR_DROP, "CMod_LoadSubmodels: bad headnode");
 	}
 }
 
@@ -217,6 +223,7 @@ void CMod_LoadNodes (lump_t *l)
 {
 	dnode_t		*in;
 	int			child;
+	int			planenum;
 	cnode_t		*out;
 	int			i, j, count;
 	
@@ -239,10 +246,25 @@ void CMod_LoadNodes (lump_t *l)
 
 	for (i=0 ; i<count ; i++, out++, in++)
 	{
-		out->plane = map_planes + LittleLong(in->planenum);
+		planenum = LittleLong(in->planenum);
+		if (planenum < 0 || planenum >= numplanes)
+			Com_Error (ERR_DROP, "CMod_LoadNodes: bad planenum");
+		out->plane = map_planes + planenum;
 		for (j=0 ; j<2 ; j++)
 		{
 			child = LittleLong (in->children[j]);
+			// >=0 is a node index (bound vs this lump's own count),
+			// <0 is a leaf: -1-child indexes map_leafs (loaded earlier)
+			if (child >= 0)
+			{
+				if (child >= numnodes)
+					Com_Error (ERR_DROP, "CMod_LoadNodes: bad node child");
+			}
+			else
+			{
+				if (-1 - child >= numleafs)
+					Com_Error (ERR_DROP, "CMod_LoadNodes: bad leaf child");
+			}
 			out->children[j] = child;
 		}
 	}
@@ -280,6 +302,12 @@ void CMod_LoadBrushes (lump_t *l)
 	{
 		out->firstbrushside = LittleLong(in->firstside);
 		out->numsides = LittleLong(in->numsides);
+		// CM_ClipBoxToBrush reads map_brushsides[firstbrushside .. +numsides).
+		// brushsides load after brushes, so numbrushsides is unknown here;
+		// bound against MAX_MAP_BRUSHSIDES. Overflow-safe form.
+		if (out->firstbrushside < 0 || out->numsides < 0
+			|| out->firstbrushside > MAX_MAP_BRUSHSIDES - out->numsides)
+			Com_Error (ERR_DROP, "CMod_LoadBrushes: bad brushside range");
 		out->contents = LittleLong(in->contents);
 	}
 
@@ -322,6 +350,12 @@ void CMod_LoadLeafs (lump_t *l)
 		out->area = LittleShort (in->area);
 		out->firstleafbrush = LittleShort (in->firstleafbrush);
 		out->numleafbrushes = LittleShort (in->numleafbrushes);
+		// CM_TraceToLeaf reads map_leafbrushes[firstleafbrush .. +numleafbrushes).
+		// leafbrushes load after leafs, so numleafbrushes count is unknown here;
+		// bound against MAX_MAP_LEAFBRUSHES. Both fields are unsigned short so the
+		// sum cannot overflow int and cannot be negative.
+		if ((int)out->firstleafbrush + (int)out->numleafbrushes > MAX_MAP_LEAFBRUSHES)
+			Com_Error (ERR_DROP, "CMod_LoadLeafs: bad leafbrush range");
 
 		if (out->cluster >= numclusters)
 			numclusters = out->cluster + 1;
@@ -419,7 +453,15 @@ void CMod_LoadLeafBrushes (lump_t *l)
 	numleafbrushes = count;
 
 	for ( i=0 ; i<count ; i++, in++, out++)
+	{
 		*out = LittleShort (*in);
+		// each entry is a brush index used to fetch map_brushes[*out] in
+		// CM_TraceToLeaf/CM_TestInLeaf. brushes load after leafbrushes, so
+		// numbrushes is unknown here; bound against MAX_MAP_BRUSHES. *out is
+		// unsigned short so it is always >= 0.
+		if (*out >= MAX_MAP_BRUSHES)
+			Com_Error (ERR_DROP, "CMod_LoadLeafBrushes: bad brush index");
+	}
 }
 
 /*
@@ -453,11 +495,16 @@ void CMod_LoadBrushSides (lump_t *l)
 	for ( i=0 ; i<count ; i++, in++, out++)
 	{
 		num = LittleShort (in->planenum);
+		if (num < 0 || num >= numplanes)
+			Com_Error (ERR_DROP, "CMod_LoadBrushSides: bad planenum");
 		out->plane = &map_planes[num];
 		j = LittleShort (in->texinfo);
 		if (j >= numtexinfo)
 			Com_Error (ERR_DROP, "Bad brushside texinfo");
-		out->surface = &map_surfaces[j];
+		if (j < 0)
+			out->surface = &nullsurface;	// bevel side (no texinfo) -- valid
+		else
+			out->surface = &map_surfaces[j];
 	}
 }
 
