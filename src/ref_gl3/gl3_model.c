@@ -379,7 +379,15 @@ static void Mod_LoadVisibility (lump_t *l)
 	loadmodel->vis = Hunk_Alloc ( l->filelen);
 	memcpy (loadmodel->vis, mod_base + l->fileofs, l->filelen);
 
+	if (l->filelen < 4)
+		ri.Sys_Error (ERR_DROP, "Mod_LoadVisibility: %s has a truncated vis lump", loadmodel->name);
 	loadmodel->vis->numclusters = LittleLong (loadmodel->vis->numclusters);
+	// the bitofs[numclusters][2] table must fit inside the lump we allocated
+	// (4-byte numclusters header + 8 bytes per cluster); div form avoids
+	// overflow in numclusters * 8
+	if (loadmodel->vis->numclusters < 0
+		|| loadmodel->vis->numclusters > (l->filelen - 4) / 8)
+		ri.Sys_Error (ERR_DROP, "Mod_LoadVisibility: %s has bad numclusters", loadmodel->name);
 	for (i=0 ; i<loadmodel->vis->numclusters ; i++)
 	{
 		loadmodel->vis->bitofs[i][0] = LittleLong (loadmodel->vis->bitofs[i][0]);
@@ -926,6 +934,20 @@ static void Mod_LoadBrushModel (model_t *mod, void *buffer)
 	for (i=0 ; i<sizeof(dheader_t)/4 ; i++)
 		((int *)header)[i] = LittleLong ( ((int *)header)[i]);
 
+	// validate every lump lies within the loaded file before the individual
+	// loaders trust fileofs/filelen. modfilelen is the size of this .bsp.
+	// The subtraction can't underflow: fileofs is checked >= 0 and the
+	// > modfilelen short-circuits before modfilelen - filelen is used.
+	for (i=0 ; i<HEADER_LUMPS ; i++)
+	{
+		lump_t	*l = &header->lumps[i];
+		if (l->fileofs < 0 || l->filelen < 0
+			|| l->fileofs > modfilelen
+			|| l->filelen > modfilelen - l->fileofs)
+			ri.Sys_Error (ERR_DROP, "Mod_LoadBrushModel: %s lump %i out of bounds",
+					 mod->name, i);
+	}
+
 // load into heap
 
 	Mod_LoadVertexes (&header->lumps[LUMP_VERTEXES]);
@@ -993,6 +1015,7 @@ static void Mod_LoadAliasModel (model_t *mod, void *buffer)
 	daliasframe_t		*pinframe, *poutframe;
 	int					*pincmd, *poutcmd;
 	int					version;
+	int					ofsend;
 
 	pinmodel = (dmdl_t *)buffer;
 
@@ -1001,7 +1024,14 @@ static void Mod_LoadAliasModel (model_t *mod, void *buffer)
 		ri.Sys_Error (ERR_DROP, "%s has wrong version number (%i should be %i)",
 				 mod->name, version, ALIAS_VERSION);
 
-	pheader = Hunk_Alloc (LittleLong(pinmodel->ofs_end));
+	// ofs_end is the model's self-declared size and the size we allocate; it
+	// must be sane and lie within the file we actually loaded
+	ofsend = LittleLong (pinmodel->ofs_end);
+	if (ofsend < (int)sizeof(dmdl_t) || ofsend > modfilelen)
+		ri.Sys_Error (ERR_DROP, "%s has a bad ofs_end (%i, file is %i)",
+				 mod->name, ofsend, modfilelen);
+
+	pheader = Hunk_Alloc (ofsend);
 
 	// byte swap the header fields and sanity check
 	for (i=0 ; i<sizeof(dmdl_t)/4 ; i++)
@@ -1025,6 +1055,32 @@ static void Mod_LoadAliasModel (model_t *mod, void *buffer)
 
 	if (pheader->num_frames <= 0)
 		ri.Sys_Error (ERR_DROP, "model %s has no frames", mod->name);
+
+	// Every lump is written into the ofs_end-sized hunk block below at an
+	// offset/count taken from the header. Validate that each region fits, so
+	// a crafted model cannot write past the allocation (or read past the
+	// file, since ofs_end <= modfilelen). 64-bit math avoids overflow in the
+	// offset + count*size products.
+	if (pheader->num_skins < 0 || pheader->num_skins > MAX_MD2SKINS)
+		ri.Sys_Error (ERR_DROP, "model %s has too many skins (%i)",
+				 mod->name, pheader->num_skins);
+	if (pheader->num_glcmds < 0)
+		ri.Sys_Error (ERR_DROP, "model %s has a bad glcmd count", mod->name);
+	if (pheader->framesize < (int)(sizeof(daliasframe_t)
+			+ (pheader->num_xyz - 1) * sizeof(dtrivertx_t)))
+		ri.Sys_Error (ERR_DROP, "model %s has a bad framesize", mod->name);
+
+	if (pheader->ofs_skins  < (int)sizeof(dmdl_t)
+	 || pheader->ofs_st     < (int)sizeof(dmdl_t)
+	 || pheader->ofs_tris   < (int)sizeof(dmdl_t)
+	 || pheader->ofs_glcmds < (int)sizeof(dmdl_t)
+	 || pheader->ofs_frames < (int)sizeof(dmdl_t)
+	 || (long long)pheader->ofs_skins  + (long long)pheader->num_skins  * MAX_SKINNAME          > ofsend
+	 || (long long)pheader->ofs_st     + (long long)pheader->num_st     * sizeof(dstvert_t)     > ofsend
+	 || (long long)pheader->ofs_tris   + (long long)pheader->num_tris   * sizeof(dtriangle_t)   > ofsend
+	 || (long long)pheader->ofs_glcmds + (long long)pheader->num_glcmds * sizeof(int)           > ofsend
+	 || (long long)pheader->ofs_frames + (long long)pheader->num_frames * pheader->framesize    > ofsend)
+		ri.Sys_Error (ERR_DROP, "model %s has a lump that overruns the file", mod->name);
 
 //
 // load base s and t vertices (not used in gl version)

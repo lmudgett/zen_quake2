@@ -464,6 +464,11 @@ byte *SCR_ReadNextFrame (void)
 	end = (cl.cinematicframe+1)*cin.s_rate/14;
 	count = end - start;
 
+	// defence in depth: with the format bounded at load time this holds for
+	// all valid cinematics, but never let a frame read past samples[]
+	if (count < 0 || count*cin.s_width*cin.s_channels > (int)sizeof(samples))
+		Com_Error (ERR_DROP, "SCR_ReadNextFrame: bad audio frame size");
+
 	FS_Read (samples, count*cin.s_width*cin.s_channels, cl.cinematic_file);
 
 	S_RawSamples (count, cin.s_rate, cin.s_width, cin.s_channels, samples);
@@ -631,6 +636,13 @@ void SCR_PlayCinematic (char *arg)
 	cin.s_width = LittleLong(cin.s_width);
 	FS_Read (&cin.s_channels, 4, cl.cinematic_file);
 	cin.s_channels = LittleLong(cin.s_channels);
+
+	// bound the audio format so the per-frame sample read (below) cannot
+	// overflow the fixed samples[] buffer in SCR_ReadNextFrame
+	if (cin.s_rate < 0 || cin.s_rate > 22050
+		|| cin.s_width < 0 || cin.s_width > 2
+		|| cin.s_channels < 0 || cin.s_channels > 2)
+		Com_Error (ERR_DROP, "SCR_PlayCinematic: bad audio format in %s", name);
 
 	Huff1TableInit ();
 

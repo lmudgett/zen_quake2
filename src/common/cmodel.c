@@ -128,6 +128,7 @@ int		c_traces, c_brush_traces;
 */
 
 byte	*cmod_base;
+static int	cmod_filelen;		// total size of the loaded BSP file, for bounds checks
 
 /*
 =================
@@ -141,6 +142,9 @@ void CMod_LoadSubmodels (lump_t *l)
 	int			i, j, count;
 
 	in = (void *)(cmod_base + l->fileofs);
+	if (l->fileofs < 0 || l->filelen < 0
+		|| l->fileofs > cmod_filelen || l->filelen > cmod_filelen - l->fileofs)
+		Com_Error (ERR_DROP, "CMod_LoadSubmodels: lump out of bounds");
 	if (l->filelen % sizeof(*in))
 		Com_Error (ERR_DROP, "MOD_LoadBmodel: funny lump size");
 	count = l->filelen / sizeof(*in);
@@ -179,6 +183,9 @@ void CMod_LoadSurfaces (lump_t *l)
 	int			i, count;
 
 	in = (void *)(cmod_base + l->fileofs);
+	if (l->fileofs < 0 || l->filelen < 0
+		|| l->fileofs > cmod_filelen || l->filelen > cmod_filelen - l->fileofs)
+		Com_Error (ERR_DROP, "CMod_LoadSurfaces: lump out of bounds");
 	if (l->filelen % sizeof(*in))
 		Com_Error (ERR_DROP, "MOD_LoadBmodel: funny lump size");
 	count = l->filelen / sizeof(*in);
@@ -214,6 +221,9 @@ void CMod_LoadNodes (lump_t *l)
 	int			i, j, count;
 	
 	in = (void *)(cmod_base + l->fileofs);
+	if (l->fileofs < 0 || l->filelen < 0
+		|| l->fileofs > cmod_filelen || l->filelen > cmod_filelen - l->fileofs)
+		Com_Error (ERR_DROP, "CMod_LoadNodes: lump out of bounds");
 	if (l->filelen % sizeof(*in))
 		Com_Error (ERR_DROP, "MOD_LoadBmodel: funny lump size");
 	count = l->filelen / sizeof(*in);
@@ -252,6 +262,9 @@ void CMod_LoadBrushes (lump_t *l)
 	int			i, count;
 	
 	in = (void *)(cmod_base + l->fileofs);
+	if (l->fileofs < 0 || l->filelen < 0
+		|| l->fileofs > cmod_filelen || l->filelen > cmod_filelen - l->fileofs)
+		Com_Error (ERR_DROP, "CMod_LoadBrushes: lump out of bounds");
 	if (l->filelen % sizeof(*in))
 		Com_Error (ERR_DROP, "MOD_LoadBmodel: funny lump size");
 	count = l->filelen / sizeof(*in);
@@ -285,6 +298,9 @@ void CMod_LoadLeafs (lump_t *l)
 	int			count;
 	
 	in = (void *)(cmod_base + l->fileofs);
+	if (l->fileofs < 0 || l->filelen < 0
+		|| l->fileofs > cmod_filelen || l->filelen > cmod_filelen - l->fileofs)
+		Com_Error (ERR_DROP, "CMod_LoadLeafs: lump out of bounds");
 	if (l->filelen % sizeof(*in))
 		Com_Error (ERR_DROP, "MOD_LoadBmodel: funny lump size");
 	count = l->filelen / sizeof(*in);
@@ -341,6 +357,9 @@ void CMod_LoadPlanes (lump_t *l)
 	int			bits;
 	
 	in = (void *)(cmod_base + l->fileofs);
+	if (l->fileofs < 0 || l->filelen < 0
+		|| l->fileofs > cmod_filelen || l->filelen > cmod_filelen - l->fileofs)
+		Com_Error (ERR_DROP, "CMod_LoadPlanes: lump out of bounds");
 	if (l->filelen % sizeof(*in))
 		Com_Error (ERR_DROP, "MOD_LoadBmodel: funny lump size");
 	count = l->filelen / sizeof(*in);
@@ -351,7 +370,7 @@ void CMod_LoadPlanes (lump_t *l)
 	if (count > MAX_MAP_PLANES)
 		Com_Error (ERR_DROP, "Map has too many planes");
 
-	out = map_planes;	
+	out = map_planes;
 	numplanes = count;
 
 	for ( i=0 ; i<count ; i++, in++, out++)
@@ -383,6 +402,9 @@ void CMod_LoadLeafBrushes (lump_t *l)
 	int			count;
 	
 	in = (void *)(cmod_base + l->fileofs);
+	if (l->fileofs < 0 || l->filelen < 0
+		|| l->fileofs > cmod_filelen || l->filelen > cmod_filelen - l->fileofs)
+		Com_Error (ERR_DROP, "CMod_LoadLeafBrushes: lump out of bounds");
 	if (l->filelen % sizeof(*in))
 		Com_Error (ERR_DROP, "MOD_LoadBmodel: funny lump size");
 	count = l->filelen / sizeof(*in);
@@ -414,6 +436,9 @@ void CMod_LoadBrushSides (lump_t *l)
 	int			num;
 
 	in = (void *)(cmod_base + l->fileofs);
+	if (l->fileofs < 0 || l->filelen < 0
+		|| l->fileofs > cmod_filelen || l->filelen > cmod_filelen - l->fileofs)
+		Com_Error (ERR_DROP, "CMod_LoadBrushSides: lump out of bounds");
 	if (l->filelen % sizeof(*in))
 		Com_Error (ERR_DROP, "MOD_LoadBmodel: funny lump size");
 	count = l->filelen / sizeof(*in);
@@ -449,6 +474,9 @@ void CMod_LoadAreas (lump_t *l)
 	int			count;
 
 	in = (void *)(cmod_base + l->fileofs);
+	if (l->fileofs < 0 || l->filelen < 0
+		|| l->fileofs > cmod_filelen || l->filelen > cmod_filelen - l->fileofs)
+		Com_Error (ERR_DROP, "CMod_LoadAreas: lump out of bounds");
 	if (l->filelen % sizeof(*in))
 		Com_Error (ERR_DROP, "MOD_LoadBmodel: funny lump size");
 	count = l->filelen / sizeof(*in);
@@ -481,6 +509,9 @@ void CMod_LoadAreaPortals (lump_t *l)
 	int			count;
 
 	in = (void *)(cmod_base + l->fileofs);
+	if (l->fileofs < 0 || l->filelen < 0
+		|| l->fileofs > cmod_filelen || l->filelen > cmod_filelen - l->fileofs)
+		Com_Error (ERR_DROP, "CMod_LoadAreaPortals: lump out of bounds");
 	if (l->filelen % sizeof(*in))
 		Com_Error (ERR_DROP, "MOD_LoadBmodel: funny lump size");
 	count = l->filelen / sizeof(*in);
@@ -508,12 +539,17 @@ void CMod_LoadVisibility (lump_t *l)
 	int		i;
 
 	numvisibility = l->filelen;
+	if (l->fileofs < 0 || l->filelen < 0
+		|| l->fileofs > cmod_filelen || l->filelen > cmod_filelen - l->fileofs)
+		Com_Error (ERR_DROP, "CMod_LoadVisibility: lump out of bounds");
 	if (l->filelen > MAX_MAP_VISIBILITY)
 		Com_Error (ERR_DROP, "Map has too large visibility lump");
 
 	memcpy (map_visibility, cmod_base + l->fileofs, l->filelen);
 
 	map_vis->numclusters = LittleLong (map_vis->numclusters);
+	if (map_vis->numclusters < 0 || map_vis->numclusters > MAX_MAP_LEAFS)
+		Com_Error (ERR_DROP, "CMod_LoadVisibility: bad numclusters");
 	for (i=0 ; i<map_vis->numclusters ; i++)
 	{
 		map_vis->bitofs[i][0] = LittleLong (map_vis->bitofs[i][0]);
@@ -530,6 +566,9 @@ CMod_LoadEntityString
 void CMod_LoadEntityString (lump_t *l)
 {
 	numentitychars = l->filelen;
+	if (l->fileofs < 0 || l->filelen < 0
+		|| l->fileofs > cmod_filelen || l->filelen > cmod_filelen - l->fileofs)
+		Com_Error (ERR_DROP, "CMod_LoadEntityString: lump out of bounds");
 	if (l->filelen > MAX_MAP_ENTSTRING)
 		Com_Error (ERR_DROP, "Map has too large entity lump");
 
@@ -592,6 +631,9 @@ cmodel_t *CM_LoadMap (char *name, qboolean clientload, unsigned *checksum)
 	if (!buf)
 		Com_Error (ERR_DROP, "Couldn't load %s", name);
 
+	if (length < (int)sizeof(dheader_t))
+		Com_Error (ERR_DROP, "CM_LoadMap: %s is too small to be a BSP", name);
+
 	last_checksum = LittleLong (Com_BlockChecksum (buf, length));
 	*checksum = last_checksum;
 
@@ -604,6 +646,7 @@ cmodel_t *CM_LoadMap (char *name, qboolean clientload, unsigned *checksum)
 		, name, header.version, BSPVERSION);
 
 	cmod_base = (byte *)buf;
+	cmod_filelen = length;
 
 	// load into heap
 	CMod_LoadSurfaces (&header.lumps[LUMP_TEXINFO]);

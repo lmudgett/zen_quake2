@@ -771,7 +771,14 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 			float			s = ((float *)order)[0];
 			float			t = ((float *)order)[1];
 			int				index_xyz = order[2];
-			float			l = shell ? 1.0f : shadedots[verts[index_xyz].lightnormalindex];
+			float			l;
+
+			// a malicious model can put an out-of-range vertex index in its
+			// glcmds; clamp before it indexes verts[]/s_lerped[]
+			if (index_xyz < 0 || index_xyz >= paliashdr->num_xyz)
+				index_xyz = 0;
+
+			l = shell ? 1.0f : shadedots[verts[index_xyz].lightnormalindex];
 
 			order += 3;
 

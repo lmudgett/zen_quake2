@@ -108,7 +108,7 @@ static void LoadPCX (char *filename, byte **pic, byte **palette, int *width, int
 
 	pix = out;
 
-	if (palette)
+	if (palette && len >= 768)
 	{
 		*palette = malloc (768);
 		memcpy (*palette, (byte *)pcx + len - 768, 768);
@@ -171,14 +171,22 @@ static void LoadTGA (char *name, byte **pic, int *width, int *height)
 	TargaHeader	targa_header;
 	byte		*targa_rgba;
 	byte		tmp[2];
+	int			length;
 
 	*pic = NULL;
 
 	// load the file
-	ri.FS_LoadFile (name, (void **)&buffer);
+	length = ri.FS_LoadFile (name, (void **)&buffer);
 	if (!buffer)
 	{
 		ri.Con_Printf (PRINT_DEVELOPER, "Bad tga file %s\n", name);
+		return;
+	}
+
+	if (length < 18)		// smallest possible TGA header
+	{
+		ri.Con_Printf (PRINT_ALL, "LoadTGA: %s is too small\n", name);
+		ri.FS_FreeFile (buffer);
 		return;
 	}
 
@@ -218,6 +226,16 @@ static void LoadTGA (char *name, byte **pic, int *width, int *height)
 
 	columns = targa_header.width;
 	rows = targa_header.height;
+
+	// reject absurd dimensions before they overflow numPixels * 4
+	if (columns <= 0 || rows <= 0 || columns > 16384 || rows > 16384)
+	{
+		ri.Con_Printf (PRINT_ALL, "LoadTGA: %s has bad dimensions %dx%d\n",
+			name, columns, rows);
+		ri.FS_FreeFile (buffer);
+		return;
+	}
+
 	numPixels = columns * rows;
 
 	if (width)
@@ -664,6 +682,11 @@ image_t *GL3_LoadPic (char *name, byte *pic, int width, int height, imagetype_t 
 	strcpy (image->name, name);
 	image->registration_sequence = registration_sequence;
 
+	// guard the s = width * height allocation against overflow / bad dims
+	if (width <= 0 || height <= 0 || width > 16384 || height > 16384)
+		ri.Sys_Error (ERR_DROP, "GL3_LoadPic: %s has bad dimensions %dx%d",
+			name, width, height);
+
 	image->width = width;
 	image->height = height;
 	image->type = type;
@@ -866,19 +889,38 @@ Loads a Quake 2 .wal wall texture (8-bit indexed, level-0 mip only).
 static image_t *LoadWAL (char *name)
 {
 	miptex_t	*mt;
-	int			width, height, ofs;
+	int			width, height, ofs, length;
 	image_t		*image;
 
-	ri.FS_LoadFile (name, (void **)&mt);
+	length = ri.FS_LoadFile (name, (void **)&mt);
 	if (!mt)
 	{
 		ri.Con_Printf (PRINT_ALL, "GL3_FindImage: can't load %s\n", name);
 		return NULL;
 	}
 
+	if (length < (int)sizeof(miptex_t))
+	{
+		ri.Con_Printf (PRINT_ALL, "LoadWAL: %s is too small\n", name);
+		ri.FS_FreeFile ((void *)mt);
+		return NULL;
+	}
+
 	width = LittleLong (mt->width);
 	height = LittleLong (mt->height);
 	ofs = LittleLong (mt->offsets[0]);
+
+	// the level-0 pixel data must lie entirely within the file. width/height
+	// are bounded above so width*height cannot overflow int; ofs is bounded
+	// below so length-ofs stays a well-defined int comparison.
+	if (width <= 0 || height <= 0 || width > 16384 || height > 16384
+		|| ofs < (int)sizeof(miptex_t)
+		|| width * height > length - ofs)
+	{
+		ri.Con_Printf (PRINT_ALL, "LoadWAL: %s has bad dimensions/offset\n", name);
+		ri.FS_FreeFile ((void *)mt);
+		return NULL;
+	}
 
 	image = GL3_LoadPic (name, (byte *)mt + ofs, width, height, it_wall, 8);
 
