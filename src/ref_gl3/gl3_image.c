@@ -552,11 +552,50 @@ image_t *GL3_LoadPic (char *name, byte *pic, int width, int height, imagetype_t 
 		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+		if (gl_anisotropy && gl_anisotropy->value > 1)
+		{
+			float	maxaniso;
+			glGetFloatv (GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maxaniso);
+			glTexParameterf (GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT,
+				gl_anisotropy->value < maxaniso ? gl_anisotropy->value : maxaniso);
+		}
 	}
 
 	free (rgba);
 
 	return image;
+}
+
+/*
+================
+GL3_UpdateAnisotropy
+
+Re-apply the gl_anisotropy level to every mipmapped texture (live cvar
+change, no vid_restart needed).
+================
+*/
+void GL3_UpdateAnisotropy (void)
+{
+	int		i;
+	float	maxaniso, level;
+	image_t	*image;
+
+	glGetFloatv (GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maxaniso);
+	level = gl_anisotropy ? gl_anisotropy->value : 1.0f;
+	if (level < 1.0f) level = 1.0f;
+	if (level > maxaniso) level = maxaniso;
+
+	for (i = 0, image = gl3textures; i < numgl3textures; i++, image++)
+	{
+		if (!image->registration_sequence)
+			continue;
+		if (image->type == it_pic || image->type == it_sky)
+			continue;	// unmipped
+
+		glBindTexture (GL_TEXTURE_2D, image->texnum);
+		glTexParameterf (GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, level);
+	}
+	gl3state.currenttexture = -1;
 }
 
 /*

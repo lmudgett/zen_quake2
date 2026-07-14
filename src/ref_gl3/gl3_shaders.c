@@ -98,16 +98,14 @@ static const char *frag3d =
 	"uniform sampler2D u_tex;\n"
 	"uniform sampler2D u_lightmap;\n"
 	"uniform int u_lm_enabled;\n"
-	"uniform float u_gamma;\n"
 	"uniform float u_intensity;\n"
 	"uniform float u_alpha;\n"
 	"out vec4 frag;\n"
-	"void main() {\n"
+	"void main() {\n"	// gamma applied once in the post pass, like id's ramp
 	"    vec4 diff = texture(u_tex, v_uv);\n"
 	"    vec3 c = diff.rgb * u_intensity;\n"
 	"    if (u_lm_enabled != 0)\n"
 	"        c *= texture(u_lightmap, v_lmuv).rgb * 2.0;\n"	// overbright
-	"    c = pow(c, vec3(u_gamma));\n"
 	"    frag = vec4(c, diff.a * u_alpha);\n"
 	"}\n";
 
@@ -133,7 +131,6 @@ static const char *fragAlias =
 	"in vec2 v_uv;\n"
 	"in vec4 v_color;\n"
 	"uniform sampler2D u_tex;\n"
-	"uniform float u_gamma;\n"
 	"uniform float u_intensity;\n"
 	"uniform float u_alphacut;\n"	// alpha-test replacement (0 = off); sprites use 0.666
 	"out vec4 frag;\n"
@@ -143,7 +140,6 @@ static const char *fragAlias =
 	// id boosts skins by intensity at UPLOAD, clamped to 255 -- clamp the
 	// boosted texel before modulating by vertex light like fixed function did
 	"    vec3 c = min(t.rgb * u_intensity, 1.0) * v_color.rgb;\n"
-	"    c = pow(c, vec3(u_gamma));\n"
 	"    frag = vec4(c, t.a * v_color.a);\n"
 	"}\n";
 
@@ -166,7 +162,6 @@ static const char *fragWarp =
 	"in vec2 v_uv;\n"
 	"uniform sampler2D u_tex;\n"
 	"uniform float u_time;\n"
-	"uniform float u_gamma;\n"
 	"uniform float u_intensity;\n"
 	"uniform float u_alpha;\n"		// translucent water (TRANS33/66)
 	"uniform float u_scroll;\n"		// SURF_FLOWING, raw units
@@ -187,8 +182,7 @@ static const char *fragWarp =
 	"                 mix(warp_at(c0 + vec2(0.0, 64.0)),  warp_at(c0 + vec2(64.0, 64.0)), fr.x), fr.y);\n"
 	"    vec2 w = (v_uv + d + vec2(u_scroll, 0.0)) / 64.0;\n"
 	"    vec4 t = texture(u_tex, w);\n"
-	"    vec3 c = pow(t.rgb * u_intensity, vec3(u_gamma));\n"
-	"    frag = vec4(c, t.a * u_alpha);\n"
+	"    frag = vec4(t.rgb * u_intensity, t.a * u_alpha);\n"
 	"}\n";
 
 gl3progwarp_t	gl3_prog_warp;
@@ -210,14 +204,12 @@ static const char *vtxPart =
 static const char *fragPart =
 	"#version 330 core\n"
 	"in vec4 v_color;\n"
-	"uniform float u_gamma;\n"
 	"out vec4 frag;\n"
 	"void main() {\n"
 	// square untextured points, like id's GL_EXT_point_parameters path.
 	// (no gl_PointCoord round-mask: it reads as (0,0) on some drivers here,
 	// which used to discard every particle fragment)
-	"    vec3 c = pow(v_color.rgb, vec3(u_gamma));\n"
-	"    frag = vec4(c, v_color.a);\n"
+	"    frag = v_color;\n"
 	"}\n";
 
 gl3progpart_t	gl3_prog_part;

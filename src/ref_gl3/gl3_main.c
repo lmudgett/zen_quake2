@@ -15,6 +15,7 @@ cvar_t	*gl_intensity;
 cvar_t	*gl_wateralpha;
 cvar_t	*gl_slimealpha;
 cvar_t	*gl_2dscale;
+cvar_t	*gl_anisotropy;
 cvar_t	*r_drawentities;
 cvar_t	*r_lightlevel;	// HACK: server reads this for monster sight (FindTarget)
 
@@ -197,11 +198,15 @@ static void GL3_RenderFrame (refdef_t *fd)
 	if (!r_worldmodel && !(fd->rdflags & RDF_NOWORLDMODEL))
 		ri.Sys_Error (ERR_DROP, "GL3_RenderFrame: NULL worldmodel");
 
+	// the 3D view renders into the offscreen scene target
+	GL3_Post_BeginScene ();
+
 	// viewport (GL y is bottom-up); the refdef is in the client's virtual
-	// 2D resolution, so scale it back to real pixels
-	glViewport (r_newrefdef.x * gl3state.scale,
-		gl3state.height - (r_newrefdef.y + r_newrefdef.height) * gl3state.scale,
-		r_newrefdef.width * gl3state.scale, r_newrefdef.height * gl3state.scale);
+	// 2D resolution, so scale it to scene-FBO pixels
+	float fbs = GL3_Post_FrameScale ();
+	glViewport ((int)(r_newrefdef.x * fbs),
+		GL3_Post_Height () - (int)((r_newrefdef.y + r_newrefdef.height) * fbs),
+		(int)(r_newrefdef.width * fbs), (int)(r_newrefdef.height * fbs));
 
 	glEnable (GL_DEPTH_TEST);
 	glDepthFunc (GL_LEQUAL);
@@ -225,9 +230,9 @@ static void GL3_RenderFrame (refdef_t *fd)
 		// no-world scene (player-setup preview): id clears the sub-view to
 		// grey and draws no sky or world, just the entities
 		glEnable (GL_SCISSOR_TEST);
-		glScissor (r_newrefdef.x * gl3state.scale,
-			gl3state.height - (r_newrefdef.y + r_newrefdef.height) * gl3state.scale,
-			r_newrefdef.width * gl3state.scale, r_newrefdef.height * gl3state.scale);
+		glScissor ((int)(r_newrefdef.x * fbs),
+			GL3_Post_Height () - (int)((r_newrefdef.y + r_newrefdef.height) * fbs),
+			(int)(r_newrefdef.width * fbs), (int)(r_newrefdef.height * fbs));
 		glClearColor (0.3f, 0.3f, 0.3f, 1.0f);
 		glClear (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glClearColor (0.0f, 0.0f, 0.0f, 1.0f);
@@ -250,9 +255,12 @@ static void GL3_RenderFrame (refdef_t *fd)
 
 	GL3_SetLightLevel ();
 
-	// restore 2D state for the HUD/console the client draws next
+	// resolve + post-process (gamma, underwater warp, bloom) to the window
 	glDisable (GL_DEPTH_TEST);
 	glDisable (GL_CULL_FACE);
+	GL3_Post_EndScene ();
+
+	// restore 2D state for the HUD/console the client draws next
 	GL3_Draw_SetOrtho ();
 
 	// full-screen damage/pickup/underwater colour wash
@@ -299,6 +307,7 @@ static int GL3_Init (void *hinstance, void *wndproc)
 	gl_wateralpha = ri.Cvar_Get ("gl_wateralpha", "0.75", CVAR_ARCHIVE);
 	gl_slimealpha = ri.Cvar_Get ("gl_slimealpha", "1", CVAR_ARCHIVE);	// acid: opaque like vanilla
 	gl_2dscale = ri.Cvar_Get ("gl_2dscale", "0", CVAR_ARCHIVE);	// 0 = auto
+	gl_anisotropy = ri.Cvar_Get ("gl_anisotropy", "8", CVAR_ARCHIVE);
 	r_drawentities = ri.Cvar_Get ("r_drawentities", "1", 0);
 	r_lightlevel = ri.Cvar_Get ("r_lightlevel", "0", 0);
 
@@ -313,6 +322,7 @@ static int GL3_Init (void *hinstance, void *wndproc)
 	GL3_InitImages ();
 	GL3_CreateNoTexture ();
 	GL3_InitShaders ();
+	GL3_Post_Init ();
 	GL3_Draw_Init ();
 	GL3_InitMesh ();
 	GL3_InitParticles ();
@@ -337,6 +347,7 @@ static void GL3_Shutdown (void)
 	GL3_ShutdownParticles ();
 	GL3_ShutdownSky ();
 	GL3_Draw_Shutdown ();
+	GL3_Post_Shutdown ();
 	GL3_ShutdownShaders ();
 	GL3_ShutdownImages ();
 	GL3_ShutdownWindow ();

@@ -62,6 +62,7 @@ void     GL3_ShutdownImages (void);
 image_t *GL3_FindImage (char *name, imagetype_t type);
 image_t *GL3_LoadPic (char *name, byte *pic, int width, int height, imagetype_t type, int bits);
 void     GL3_FreeUnusedImages (void);
+void     GL3_UpdateAnisotropy (void);
 void     GL3_ImageList_f (void);
 void     GL3_Bind (GLuint texnum);
 
@@ -136,6 +137,25 @@ extern cvar_t	*gl_wateralpha;
 extern cvar_t	*gl_slimealpha;
 extern cvar_t	*gl_2dscale;
 extern cvar_t	*gl_modulate;	// registered lazily in gl3_surf.c
+extern cvar_t	*gl_anisotropy;
+extern cvar_t	*gl_msaa;			// gl3_post.c
+extern cvar_t	*gl_renderscale;
+extern cvar_t	*gl_bloom;
+
+// gl3_post.c -- scene FBO and post-processing (gamma, underwater warp, bloom)
+void  GL3_Post_Init (void);
+void  GL3_Post_Shutdown (void);
+void  GL3_Post_BeginScene (void);	// bind+clear the scene target
+void  GL3_Post_EndScene (void);		// resolve, bloom, draw to the window
+float GL3_Post_FrameScale (void);	// virtual 2D coords -> scene FBO pixels
+int   GL3_Post_Width (void);
+int   GL3_Post_Height (void);
+
+// anisotropic filtering enums (extension is ubiquitous; glad may omit them)
+#ifndef GL_TEXTURE_MAX_ANISOTROPY_EXT
+#define GL_TEXTURE_MAX_ANISOTROPY_EXT		0x84FE
+#define GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT	0x84FF
+#endif
 
 // gl3_glimp.c -- window / context management
 void     GL3_ShutdownWindow (void);

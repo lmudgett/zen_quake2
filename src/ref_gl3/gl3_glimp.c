@@ -148,6 +148,12 @@ void GL3_CheckWindowChanges (void)
 		GL3_UpdateViddef ();
 	}
 	gl_2dscale->modified = false;
+
+	if (gl_anisotropy && gl_anisotropy->modified)
+	{
+		gl_anisotropy->modified = false;
+		GL3_UpdateAnisotropy ();
+	}
 }
 
 void GL3_ShutdownWindow (void)
