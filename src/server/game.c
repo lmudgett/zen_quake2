@@ -197,8 +197,11 @@ void PF_Configstring (int index, char *val)
 	if (!val)
 		val = "";
 
-	// change the string in sv
-	Q_strlcpy (sv.configstrings[index], val, sizeof(sv.configstrings[index]));
+	// change the string in sv. Long strings (the CS_STATUSBAR layout program)
+	// intentionally span consecutive slots, so bound the copy by the space
+	// remaining in the whole array rather than one 64-byte slot.
+	Q_strlcpy (sv.configstrings[index], val,
+		(MAX_CONFIGSTRINGS - index) * sizeof(sv.configstrings[0]));
 	
 	if (sv.state != ss_loading)
 	{	// send the update to everyone

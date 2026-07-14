@@ -525,7 +525,10 @@ void CL_ParseConfigString (void)
 	if (i < 0 || i >= MAX_CONFIGSTRINGS)
 		Com_Error (ERR_DROP, "configstring > MAX_CONFIGSTRINGS");
 	s = MSG_ReadString(&net_message);
-	strcpy (cl.configstrings[i], s);
+	// long strings (the CS_STATUSBAR layout program) intentionally span
+	// consecutive slots; bound by the rest of the array, not one slot
+	Q_strlcpy (cl.configstrings[i], s,
+		(MAX_CONFIGSTRINGS - i) * sizeof(cl.configstrings[0]));
 
 	// do something apropriate 
 
