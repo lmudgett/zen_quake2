@@ -782,6 +782,148 @@ char *dm_statusbar =
 "endif "
 ;
 
+// Widescreen variants (hud_wide): the classic bar centers everything in a
+// 320-wide 4:3 strip via xv; these anchor health/armor to the bottom-left
+// and ammo/selected item to the bottom-right with xl/xr, so the HUD uses
+// the full width on 16:9 displays. Transient center elements stay put.
+
+char *single_statusbar_wide =
+"yb	-24 "
+
+// health
+"xl	8 "
+"hnum "
+"xl	58 "
+"pic 0 "
+
+// armor
+"if 4 "
+"	xl	90 "
+"	rnum "
+"	xl	140 "
+"	pic 4 "
+"endif "
+
+// ammo
+"if 2 "
+"	xr	-82 "
+"	anum "
+"	xr	-32 "
+"	pic 2 "
+"endif "
+
+// selected item
+"if 6 "
+"	xr	-114 "
+"	pic 6 "
+"endif "
+
+"yb	-50 "
+
+// picked up item
+"if 7 "
+"	xl	8 "
+"	pic 7 "
+"	xl	34 "
+"	yb	-42 "
+"	stat_string 8 "
+"	yb	-50 "
+"endif "
+
+// timer
+"if 9 "
+"	xr	-66 "
+"	num	2	10 "
+"	xr	-32 "
+"	pic	9 "
+"endif "
+
+//  help / weapon icon
+"if 11 "
+"	xv	148 "
+"	pic	11 "
+"endif "
+;
+
+char *dm_statusbar_wide =
+"yb	-24 "
+
+// health
+"xl	8 "
+"hnum "
+"xl	58 "
+"pic 0 "
+
+// armor
+"if 4 "
+"	xl	90 "
+"	rnum "
+"	xl	140 "
+"	pic 4 "
+"endif "
+
+// ammo
+"if 2 "
+"	xr	-82 "
+"	anum "
+"	xr	-32 "
+"	pic 2 "
+"endif "
+
+// selected item
+"if 6 "
+"	xr	-114 "
+"	pic 6 "
+"endif "
+
+"yb	-50 "
+
+// picked up item
+"if 7 "
+"	xl	8 "
+"	pic 7 "
+"	xl	34 "
+"	yb	-42 "
+"	stat_string 8 "
+"	yb	-50 "
+"endif "
+
+// timer
+"if 9 "
+"	xr	-66 "
+"	num	2	10 "
+"	xr	-32 "
+"	pic	9 "
+"endif "
+
+//  help / weapon icon
+"if 11 "
+"	xv	148 "
+"	pic	11 "
+"endif "
+
+//  frags
+"xr	-50 "
+"yt 2 "
+"num 3 14 "
+
+// spectator
+"if 17 "
+  "xv 0 "
+  "yb -58 "
+  "string2 \"SPECTATOR MODE\" "
+"endif "
+
+// chase camera
+"if 16 "
+  "xv 0 "
+  "yb -68 "
+  "string \"Chasing\" "
+  "xv 64 "
+  "stat_string 16 "
+"endif "
+;
+
 
 /*QUAKED worldspawn (0 0 0) ?
 
@@ -835,11 +977,13 @@ void SP_worldspawn (edict_t *ent)
 
 	gi.configstring (CS_MAXCLIENTS, va("%i", (int)(maxclients->value) ) );
 
-	// status bar program
+	// status bar program: hud_wide (default) anchors it to the screen
+	// edges for 16:9; hud_wide 0 keeps the classic centered 4:3 strip
+	cvar_t	*hud_wide = gi.cvar ("hud_wide", "1", CVAR_ARCHIVE);
 	if (deathmatch->value)
-		gi.configstring (CS_STATUSBAR, dm_statusbar);
+		gi.configstring (CS_STATUSBAR, hud_wide->value ? dm_statusbar_wide : dm_statusbar);
 	else
-		gi.configstring (CS_STATUSBAR, single_statusbar);
+		gi.configstring (CS_STATUSBAR, hud_wide->value ? single_statusbar_wide : single_statusbar);
 
 	//---------------
 
