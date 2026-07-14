@@ -86,7 +86,8 @@ void GL3_Draw_SetOrtho (void)
 {
 	float	ortho[16];
 
-	GL3_Ortho (ortho, 0, (float)gl3state.width, (float)gl3state.height, 0);
+	// 2D draws in the virtual resolution; the projection scales it up
+	GL3_Ortho (ortho, 0, (float)gl3state.vw, (float)gl3state.vh, 0);
 
 	glUseProgram (gl3_prog2d.program);
 	glUniformMatrix4fv (gl3_prog2d.u_ortho, 1, GL_FALSE, ortho);
@@ -224,7 +225,7 @@ void GL3_Draw_Fill (int x, int y, int w, int h, int c)
 
 void GL3_Draw_FadeScreen (void)
 {
-	GL3_DrawQuad (white_tex, 0, 0, (float)gl3state.width, (float)gl3state.height,
+	GL3_DrawQuad (white_tex, 0, 0, (float)gl3state.vw, (float)gl3state.vh,
 		0, 0, 1, 1, 0, 0, 0, 0.8f);
 }
 
@@ -238,7 +239,7 @@ void GL3_Draw_PolyBlend (float r, float g, float b, float a)
 
 	glUniform1f (gl3_prog2d.u_intensity, 1.0f);
 	glUniform1f (gl3_prog2d.u_gamma, 1.0f);
-	GL3_DrawQuad (white_tex, 0, 0, (float)gl3state.width, (float)gl3state.height,
+	GL3_DrawQuad (white_tex, 0, 0, (float)gl3state.vw, (float)gl3state.vh,
 		0, 0, 1, 1, r, g, b, a);
 	glUniform1f (gl3_prog2d.u_intensity, gl_intensity ? gl_intensity->value : 1.0f);
 	glUniform1f (gl3_prog2d.u_gamma, (vid_gamma && vid_gamma->value >= 0.5f) ? vid_gamma->value : 1.0f);
@@ -246,15 +247,27 @@ void GL3_Draw_PolyBlend (float r, float g, float b, float a)
 
 void GL3_Draw_StretchRaw (int x, int y, int w, int h, int cols, int rows, byte *data)
 {
-	static unsigned	buf[256 * 256];
-	unsigned		*dst = buf;
+	static unsigned	*buf;
+	static int		buf_count;
 	int				i, count = cols * rows;
 
-	if (cols <= 0 || rows <= 0 || count > 256 * 256)
+	if (cols <= 0 || rows <= 0)
 		return;
 
+	if (count > buf_count)
+	{
+		free (buf);
+		buf = malloc (count * sizeof(unsigned));
+		if (!buf)
+		{
+			buf_count = 0;
+			return;
+		}
+		buf_count = count;
+	}
+
 	for (i = 0; i < count; i++)
-		dst[i] = raw_palette[data[i]];
+		buf[i] = raw_palette[data[i]];
 
 	GL3_Bind (raw_tex);
 	glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, cols, rows, 0, GL_RGBA, GL_UNSIGNED_BYTE, buf);

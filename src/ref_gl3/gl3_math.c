@@ -29,7 +29,7 @@ void GL3_MatMul (float *out, const float *a, const float *b)
 
 void GL3_MatPerspective (float *m, float fovy_deg, float aspect, float znear, float zfar)
 {
-	float	f = 1.0f / tanf (fovy_deg * (float)M_PI / 360.0f);	// cot(fovy/2)
+	float	f = 1.0f / tanf (DEG2RADF (fovy_deg) * 0.5f);	// cot(fovy/2)
 
 	memset (m, 0, sizeof(float) * 16);
 	m[0]  = f / aspect;
@@ -49,23 +49,18 @@ void GL3_MatTranslate (float *m, float x, float y, float z)
 
 void GL3_MatRotate (float *m, float deg, float x, float y, float z)
 {
-	float	rad = deg * (float)M_PI / 180.0f;
-	float	c = cosf (rad), s = sinf (rad);
+	float	rad = DEG2RADF (deg);
+	float	c = cosf (rad), s = sinf (rad), t = 1.0f - c;
 	float	len = sqrtf (x * x + y * y + z * z);
 
-	if (len > 0.0f) { x /= len; y /= len; z /= len; }
-
 	GL3_MatIdentity (m);
-	// column-major rotation about (x,y,z)
-	m[0]  = x * x * (1 - c) + c;
-	m[1]  = y * x * (1 - c) + z * s;
-	m[2]  = x * z * (1 - c) - y * s;
+	if (len == 0.0f)
+		return;
+	x /= len; y /= len; z /= len;
 
-	m[4]  = x * y * (1 - c) - z * s;
-	m[5]  = y * y * (1 - c) + c;
-	m[6]  = y * z * (1 - c) + x * s;
-
-	m[8]  = x * z * (1 - c) + y * s;
-	m[9]  = y * z * (1 - c) - x * s;
-	m[10] = z * z * (1 - c) + c;
+	// Rodrigues: R = c*I + s*[axis]x + (1-c)*axis*axis^T
+	// (column-major storage; source lines below read as matrix rows)
+	m[0] = t*x*x + c;	m[4] = t*x*y - s*z;	m[8]  = t*x*z + s*y;
+	m[1] = t*x*y + s*z;	m[5] = t*y*y + c;	m[9]  = t*y*z - s*x;
+	m[2] = t*x*z - s*y;	m[6] = t*y*z + s*x;	m[10] = t*z*z + c;
 }

@@ -12,8 +12,12 @@ cvar_t	*vid_fullscreen;
 cvar_t	*vid_gamma;
 cvar_t	*gl_clear;
 cvar_t	*gl_intensity;
+cvar_t	*gl_wateralpha;
+cvar_t	*gl_2dscale;
 cvar_t	*r_drawentities;
+cvar_t	*r_lightlevel;	// HACK: server reads this for monster sight (FindTarget)
 
+void R_LightPoint (vec3_t p, vec3_t color);				// gl3_mesh.c
 void GL3_SetRawPalette (const unsigned char *palette);	// gl3_draw.c
 void GL3_ScreenShot_f (void);							// gl3_screenshot.c
 void GL3_ScreenShot_Capture (void);						// gl3_screenshot.c
@@ -150,6 +154,38 @@ static void GL3_DrawEntities (void)
 	glDepthMask (GL_TRUE);
 }
 
+// Sample the world light at the view origin into the r_lightlevel cvar.
+// The client copies it into usercmd_t.lightlevel each frame and the game's
+// FindTarget treats light_level <= 5 as "too dark to be seen" -- without
+// this monsters never sight the player (id's gl_rmain.c R_SetLightLevel,
+// "save off light value for server to look at (BIG HACK!)").
+static void GL3_SetLightLevel (void)
+{
+	vec3_t	shadelight;
+
+	if (r_newrefdef.rdflags & RDF_NOWORLDMODEL)
+		return;
+
+	R_LightPoint (r_newrefdef.vieworg, shadelight);
+
+	// pick the greatest component, which should be the same
+	// as the mono value returned by software
+	if (shadelight[0] > shadelight[1])
+	{
+		if (shadelight[0] > shadelight[2])
+			r_lightlevel->value = 150 * shadelight[0];
+		else
+			r_lightlevel->value = 150 * shadelight[2];
+	}
+	else
+	{
+		if (shadelight[1] > shadelight[2])
+			r_lightlevel->value = 150 * shadelight[1];
+		else
+			r_lightlevel->value = 150 * shadelight[2];
+	}
+}
+
 static void GL3_RenderFrame (refdef_t *fd)
 {
 	float	mvp[16];
@@ -160,10 +196,11 @@ static void GL3_RenderFrame (refdef_t *fd)
 	if (!r_worldmodel && !(fd->rdflags & RDF_NOWORLDMODEL))
 		ri.Sys_Error (ERR_DROP, "GL3_RenderFrame: NULL worldmodel");
 
-	// viewport (GL y is bottom-up)
-	glViewport (r_newrefdef.x,
-		gl3state.height - (r_newrefdef.y + r_newrefdef.height),
-		r_newrefdef.width, r_newrefdef.height);
+	// viewport (GL y is bottom-up); the refdef is in the client's virtual
+	// 2D resolution, so scale it back to real pixels
+	glViewport (r_newrefdef.x * gl3state.scale,
+		gl3state.height - (r_newrefdef.y + r_newrefdef.height) * gl3state.scale,
+		r_newrefdef.width * gl3state.scale, r_newrefdef.height * gl3state.scale);
 
 	glEnable (GL_DEPTH_TEST);
 	glDepthFunc (GL_LEQUAL);
@@ -190,6 +227,8 @@ static void GL3_RenderFrame (refdef_t *fd)
 	GL3_DrawWorldTranslucent ();		// glass / force fields, blended
 	GL3_DrawParticles (gl3_viewproj);
 
+	GL3_SetLightLevel ();
+
 	// restore 2D state for the HUD/console the client draws next
 	glDisable (GL_DEPTH_TEST);
 	glDisable (GL_CULL_FACE);
@@ -204,6 +243,8 @@ static void GL3_RenderFrame (refdef_t *fd)
 static void GL3_BeginFrame (float camera_separation)
 {
 	GL3_StartFrame ();
+
+	GL3_CheckWindowChanges ();	// vid_fullscreen / gl_mode / gl_2dscale
 
 	glViewport (0, 0, gl3state.width, gl3state.height);
 	glClearColor (0.0f, 0.0f, 0.0f, 1.0f);
@@ -234,7 +275,10 @@ static int GL3_Init (void *hinstance, void *wndproc)
 	vid_gamma = ri.Cvar_Get ("vid_gamma", "1", CVAR_ARCHIVE);
 	gl_clear = ri.Cvar_Get ("gl_clear", "0", 0);
 	gl_intensity = ri.Cvar_Get ("intensity", "2", CVAR_ARCHIVE);
+	gl_wateralpha = ri.Cvar_Get ("gl_wateralpha", "0.75", CVAR_ARCHIVE);
+	gl_2dscale = ri.Cvar_Get ("gl_2dscale", "0", CVAR_ARCHIVE);	// 0 = auto
 	r_drawentities = ri.Cvar_Get ("r_drawentities", "1", 0);
+	r_lightlevel = ri.Cvar_Get ("r_lightlevel", "0", 0);
 
 	Swap_Init ();	// the renderer has its own copy of q_shared's byte-swap pointers
 

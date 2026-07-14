@@ -18,6 +18,9 @@
 // the import table the engine hands us (printing, cvars, files, ...)
 extern refimport_t	ri;
 
+// degrees -> radians: one multiply by pi/180
+#define DEG2RADF(deg)	((deg) * 0.017453292519943295f)
+
 typedef enum { it_skin, it_sprite, it_wall, it_pic, it_sky } imagetype_t;
 
 typedef struct image_s
@@ -36,6 +39,8 @@ typedef struct image_s
 typedef struct
 {
 	int			width, height;		// current drawable size in pixels
+	int			vw, vh;				// virtual 2D resolution reported to the client
+	int			scale;				// real pixels per virtual pixel (UI scale)
 	qboolean	fullscreen;
 	SDL_Window	*window;
 	SDL_GLContext	context;
@@ -126,12 +131,16 @@ extern cvar_t	*vid_fullscreen;
 extern cvar_t	*vid_gamma;
 extern cvar_t	*gl_clear;
 extern cvar_t	*gl_intensity;
+extern cvar_t	*gl_wateralpha;
+extern cvar_t	*gl_2dscale;
 
 // gl3_glimp.c -- window / context management
 void     GL3_ShutdownWindow (void);
 void     GL3_StartFrame (void);		// make context current
 void     GL3_SwapBuffers (void);
 qboolean GL3_SetMode (int mode, qboolean fullscreen);
+void     GL3_UpdateViddef (void);	// recompute UI scale, report size to client
+void     GL3_CheckWindowChanges (void);	// apply fullscreen/mode/scale cvar changes
 
 // ------------------------------------------------------------------ 3D / world
 

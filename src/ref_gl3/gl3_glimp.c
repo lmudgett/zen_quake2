@@ -72,12 +72,82 @@ qboolean GL3_SetMode (int mode, qboolean fullscreen)
 	ri.Con_Printf (PRINT_ALL, "  vendor:   %s\n", (const char *)glGetString (GL_VENDOR));
 	ri.Con_Printf (PRINT_ALL, "  renderer: %s\n", (const char *)glGetString (GL_RENDERER));
 
-	glViewport (0, 0, gl3state.width, gl3state.height);
-
-	// tell the client the real drawable size
-	ri.Vid_NewWindow (gl3state.width, gl3state.height);
+	GL3_UpdateViddef ();
 
 	return true;
+}
+
+/*
+=================
+GL3_UpdateViddef
+
+Compute the 2D virtual resolution from the drawable size and gl_2dscale and
+report it to the client. All 2D drawing (HUD/console/menus/cinematics)
+happens in vw x vh coordinates and is scaled up by the ortho projection, so
+the UI stays readable at high resolutions.
+=================
+*/
+void GL3_UpdateViddef (void)
+{
+	int	scale = (int)gl_2dscale->value;
+
+	if (scale < 1)
+	{	// auto: integer scale that keeps the UI near a 600-line layout
+		scale = (int)(gl3state.height / 600.0f + 0.5f);
+		if (scale < 1)
+			scale = 1;
+	}
+	gl3state.scale = scale;
+	gl3state.vw = (gl3state.width + scale - 1) / scale;
+	gl3state.vh = (gl3state.height + scale - 1) / scale;
+
+	glViewport (0, 0, gl3state.width, gl3state.height);
+	ri.Vid_NewWindow (gl3state.vw, gl3state.vh);
+}
+
+/*
+=================
+GL3_CheckWindowChanges
+
+Apply vid_fullscreen / gl_mode / gl_2dscale changes at the top of the frame.
+SDL3 toggles fullscreen and resizes live, so the GL context -- and with it
+every texture, lightmap and VBO -- survives; no vid_restart needed.
+=================
+*/
+void GL3_CheckWindowChanges (void)
+{
+	int	width, height;
+
+	if (!gl3state.window)
+		return;
+
+	if (vid_fullscreen->modified || gl_mode->modified)
+	{
+		qboolean fullscreen = vid_fullscreen->value != 0;
+
+		vid_fullscreen->modified = false;
+		gl_mode->modified = false;
+
+		SDL_SetWindowFullscreen (gl3state.window, fullscreen ? true : false);
+		if (!fullscreen)
+		{
+			if (ri.Vid_GetModeInfo (&width, &height, (int)gl_mode->value))
+				SDL_SetWindowSize (gl3state.window, width, height);
+			else
+				ri.Con_Printf (PRINT_ALL, "GL3_CheckWindowChanges: invalid mode %d\n",
+					(int)gl_mode->value);
+		}
+		SDL_SyncWindow (gl3state.window);
+
+		SDL_GetWindowSizeInPixels (gl3state.window, &gl3state.width, &gl3state.height);
+		gl3state.fullscreen = fullscreen;
+		GL3_UpdateViddef ();
+	}
+	else if (gl_2dscale->modified)
+	{
+		GL3_UpdateViddef ();
+	}
+	gl_2dscale->modified = false;
 }
 
 void GL3_ShutdownWindow (void)
