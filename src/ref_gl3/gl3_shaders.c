@@ -260,6 +260,37 @@ static const char *fragPart =
 
 gl3progpart_t	gl3_prog_part;
 
+// ---- voxel mode: textured cube faces with a baked directional face shade ----
+static const char *vtxVoxel =
+	"#version 330 core\n"
+	"in vec3 a_pos;\n"			// face-vertex world (or model) position
+	"in vec2 a_uv;\n"			// texcoord projected from the source surface
+	"in float a_color;\n"		// baked per-face shade (axis-dependent)
+	"uniform mat4 u_mvp;\n"		// projection * view
+	"uniform mat4 u_model;\n"	// identity for the world, entity matrix for models
+	"out vec2 v_uv;\n"
+	"out float v_shade;\n"
+	"void main() {\n"
+	"    v_uv = a_uv;\n"
+	"    v_shade = a_color;\n"
+	"    gl_Position = u_mvp * u_model * vec4(a_pos, 1.0);\n"
+	"}\n";
+
+static const char *fragVoxel =
+	"#version 330 core\n"
+	"in vec2 v_uv;\n"
+	"in float v_shade;\n"
+	"uniform sampler2D u_tex;\n"
+	"uniform float u_intensity;\n"
+	"uniform vec3 u_entcolor;\n"		// per-entity light tint; (1,1,1) for the world
+	"out vec4 frag;\n"
+	"void main() {\n"
+	"    vec3 c = texture(u_tex, v_uv).rgb * v_shade * u_intensity * u_entcolor;\n"
+	"    frag = vec4(c, 1.0);\n"		// opaque, writes depth (gamma applied in post)
+	"}\n";
+
+gl3progvoxel_t	gl3_prog_voxel;
+
 void GL3_InitShaders (void)
 {
 	gl3_prog2d.program = GL3_CompileProgram (vtx2d, frag2d);
@@ -326,6 +357,14 @@ void GL3_InitShaders (void)
 	glUniform1f (gl3_prog_warp.u_alpha, 1.0f);
 	glUniform1f (gl3_prog_warp.u_scroll, 0.0f);
 	glUniform1i (glGetUniformLocation (gl3_prog_warp.program, "u_tex"), 0);
+
+	gl3_prog_voxel.program = GL3_CompileProgram (vtxVoxel, fragVoxel);
+	gl3_prog_voxel.u_mvp = glGetUniformLocation (gl3_prog_voxel.program, "u_mvp");
+	gl3_prog_voxel.u_model = glGetUniformLocation (gl3_prog_voxel.program, "u_model");
+	gl3_prog_voxel.u_intensity = glGetUniformLocation (gl3_prog_voxel.program, "u_intensity");
+	gl3_prog_voxel.u_entcolor = glGetUniformLocation (gl3_prog_voxel.program, "u_entcolor");
+	glUseProgram (gl3_prog_voxel.program);
+	glUniform1i (glGetUniformLocation (gl3_prog_voxel.program, "u_tex"), 0);
 }
 
 void GL3_ShutdownShaders (void)
@@ -340,9 +379,12 @@ void GL3_ShutdownShaders (void)
 		glDeleteProgram (gl3_prog_part.program);
 	if (gl3_prog_warp.program)
 		glDeleteProgram (gl3_prog_warp.program);
+	if (gl3_prog_voxel.program)
+		glDeleteProgram (gl3_prog_voxel.program);
 	memset (&gl3_prog2d, 0, sizeof(gl3_prog2d));
 	memset (&gl3_prog3d, 0, sizeof(gl3_prog3d));
 	memset (&gl3_prog_alias, 0, sizeof(gl3_prog_alias));
 	memset (&gl3_prog_part, 0, sizeof(gl3_prog_part));
 	memset (&gl3_prog_warp, 0, sizeof(gl3_prog_warp));
+	memset (&gl3_prog_voxel, 0, sizeof(gl3_prog_voxel));
 }

@@ -262,13 +262,23 @@ static void GL3_RenderFrame (refdef_t *fd)
 		GL3_MarkLeaves ();
 		GL3_PushDlights ();
 		GL3_DrawSkyBox (gl3_viewproj, r_newrefdef.vieworg);	// background, before the world
-		GL3_DrawWorld ();
-		GL3_DrawWater (gl3_viewproj, r_newrefdef.time);
-		GL3_DrawEntities ();
-		GL3_RenderDlights (gl3_viewproj);	// gl_flashblend glow balls
-		GL3_DrawParticles (gl3_viewproj);	// id: particles BEFORE alpha
-											// surfaces, so glass tints them
-		GL3_DrawWorldTranslucent ();		// glass / force fields, blended
+		if (r_voxelize->value)
+		{
+			// voxel mode: rebuild the world (and, opt-in, entities) as cubes.
+			// water/dlights/particles/translucent are intentionally skipped.
+			GL3_DrawWorldVoxels (gl3_viewproj);
+			GL3_DrawEntities ();
+		}
+		else
+		{
+			GL3_DrawWorld ();
+			GL3_DrawWater (gl3_viewproj, r_newrefdef.time);
+			GL3_DrawEntities ();
+			GL3_RenderDlights (gl3_viewproj);	// gl_flashblend glow balls
+			GL3_DrawParticles (gl3_viewproj);	// id: particles BEFORE alpha
+												// surfaces, so glass tints them
+			GL3_DrawWorldTranslucent ();		// glass / force fields, blended
+		}
 	}
 
 	GL3_SetLightLevel ();
@@ -382,6 +392,7 @@ static int GL3_Init (void *hinstance, void *wndproc)
 	GL3_Draw_Init ();
 	GL3_InitMesh ();
 	GL3_InitParticles ();
+	GL3_InitVoxels ();
 	GL3_InitSky ();
 	GL3_Mod_Init ();
 
@@ -402,6 +413,7 @@ static void GL3_Shutdown (void)
 	GL3_ShutdownSurf ();
 	GL3_ShutdownMesh ();
 	GL3_ShutdownParticles ();
+	GL3_ShutdownVoxels ();
 	GL3_ShutdownSky ();
 	GL3_Draw_Shutdown ();
 	GL3_Post_Shutdown ();

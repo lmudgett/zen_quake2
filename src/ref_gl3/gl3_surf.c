@@ -808,6 +808,16 @@ static void R_RecursiveWorldNode (mnode_t *node)
 	R_RecursiveWorldNode (node->children[!side]);
 }
 
+// voxel mode reuses the world's PVS + frustum + facing cull: stamp
+// surf->drawframe for this frame's visible surfaces without drawing them
+void GL3_MarkVisibleSurfaces (void)
+{
+	if (!r_worldmodel)
+		return;
+	VectorCopy (r_newrefdef.vieworg, modelorg);
+	R_RecursiveWorldNode (r_worldmodel->nodes);
+}
+
 // ------------------------------------------------------------------ draw
 
 // step the animation chain by the entity's frame, matching R_TextureAnimation.

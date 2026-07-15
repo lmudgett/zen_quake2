@@ -163,6 +163,9 @@ extern cvar_t	*gl_texturemode;	// GL_NEAREST .. GL_LINEAR_MIPMAP_LINEAR
 extern cvar_t	*gl_msaa;			// gl3_post.c
 extern cvar_t	*gl_renderscale;
 extern cvar_t	*gl_bloom;
+extern cvar_t	*r_voxelize;			// voxel render mode: rebuild the scene as cubes
+extern cvar_t	*r_voxelsize;			// voxel grid resolution, world units
+extern cvar_t	*r_voxelize_entities;	// also voxelize alias models + the view weapon
 
 // gl3_post.c -- scene FBO and post-processing (gamma, underwater warp, bloom)
 void  GL3_Post_Init (void);
@@ -216,6 +219,7 @@ void GL3_EndBuildingLightmaps (void);
 // world rendering (gl3_surf.c)
 void GL3_BuildWorldVBO (void);			// upload all world polys after registration
 void GL3_ShutdownSurf (void);			// free world VBO/VAO and lightmap textures
+void GL3_MarkVisibleSurfaces (void);	// stamp surf->drawframe for this frame's PVS (voxel mode)
 void GL3_UploadDlights (const vec3_t move);	// per-pixel dlight uniforms (gl_dynamic 2)
 void GL3_DrawWorld (void);				// draw the visible world this frame
 void GL3_DrawWorldTranslucent (void);	// TRANS33/66 surfaces, blended pass
@@ -261,6 +265,24 @@ extern gl3progpart_t	gl3_prog_part;
 void GL3_InitParticles (void);
 void GL3_ShutdownParticles (void);
 void GL3_DrawParticles (const float *viewproj);
+
+// voxel render mode (gl3_voxel.c): textured cube-face mesh, world + entities
+typedef struct
+{
+	GLuint	program;
+	GLint	u_mvp;			// projection * view
+	GLint	u_model;		// model matrix (identity for the world)
+	GLint	u_intensity;	// texture intensity, matches the world
+	GLint	u_entcolor;		// per-entity light tint (world uses 1,1,1)
+} gl3progvoxel_t;
+extern gl3progvoxel_t	gl3_prog_voxel;
+
+void GL3_InitVoxels (void);
+void GL3_ShutdownVoxels (void);
+void GL3_BuildWorldVoxels (void);
+void GL3_DrawWorldVoxels (const float *viewproj);
+void GL3_VoxelizeAliasModel (model_t *mod);
+void GL3_DrawAliasModelVoxels (entity_t *e, const float *viewproj);
 
 // sky (gl3_sky.c)
 void GL3_InitSky (void);
