@@ -678,10 +678,22 @@ static void Mod_LoadFaces (lump_t *l)
 		i = LittleLong(in->lightofs);
 		if (i == -1)
 			out->samples = NULL;
-		else if (i < 0 || i >= mod_lightdatasize)
-			ri.Sys_Error (ERR_DROP, "Mod_LoadFaces: bad lightofs in %s", loadmodel->name);
 		else
+		{
+			// R_BuildLightMap reads nummaps * smax*tmax*3 bytes starting at
+			// samples; keep that whole block inside the lighting lump (extents
+			// here are the real ones -- the SURF_WARP override runs below)
+			int	smax = (out->extents[0] >> 4) + 1;
+			int	tmax = (out->extents[1] >> 4) + 1;
+			int	nmaps;
+			long long	need;
+			for (nmaps = 0; nmaps < MAXLIGHTMAPS && out->styles[nmaps] != 255; nmaps++)
+				;
+			need = (long long)smax * tmax * 3 * nmaps;
+			if (i < 0 || smax <= 0 || tmax <= 0 || i > mod_lightdatasize - need)
+				ri.Sys_Error (ERR_DROP, "Mod_LoadFaces: bad lightofs in %s", loadmodel->name);
 			out->samples = loadmodel->lightdata + i;
+		}
 
 	// set the drawing flags
 
@@ -772,9 +784,14 @@ static void Mod_LoadNodes (lump_t *l)
 			ri.Sys_Error (ERR_DROP, "Mod_LoadNodes: bad planenum in %s", loadmodel->name);
 		out->plane = loadmodel->planes + p;
 
-		out->firstsurface = LittleShort (in->firstface);
-		out->numsurfaces = LittleShort (in->numfaces);
+		out->firstsurface = (unsigned short)LittleShort (in->firstface);
+		out->numsurfaces = (unsigned short)LittleShort (in->numfaces);
 		out->contents = -1;	// differentiate from leafs
+
+		// the node's surface run indexes the surfaces lump when the world is
+		// drawn (GL3_RecursiveWorldNode etc.) -- keep it in range
+		if ((int)out->firstsurface + (int)out->numsurfaces > loadmodel->numsurfaces)
+			ri.Sys_Error (ERR_DROP, "Mod_LoadNodes: bad surface range in %s", loadmodel->name);
 
 		for (j=0 ; j<2 ; j++)
 		{

@@ -494,8 +494,8 @@ void CMod_LoadBrushSides (lump_t *l)
 
 	for ( i=0 ; i<count ; i++, in++, out++)
 	{
-		num = LittleShort (in->planenum);
-		if (num < 0 || num >= numplanes)
+		num = (unsigned short)LittleShort (in->planenum);
+		if (num >= numplanes)
 			Com_Error (ERR_DROP, "CMod_LoadBrushSides: bad planenum");
 		out->plane = &map_planes[num];
 		j = LittleShort (in->texinfo);
