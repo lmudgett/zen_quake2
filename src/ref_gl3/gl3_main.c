@@ -130,7 +130,10 @@ static void GL3_DrawEntity (entity_t *e)
 	switch (e->model->type)
 	{
 	case mod_alias:
-		GL3_DrawAliasModel (e, gl3_viewproj);
+		if (r_voxelize->value && r_voxelize_entities->value)
+			GL3_DrawAliasModelVoxels (e, gl3_viewproj);
+		else
+			GL3_DrawAliasModel (e, gl3_viewproj);
 		break;
 	case mod_brush:
 		GL3_DrawBrushModel (e, gl3_viewproj);
