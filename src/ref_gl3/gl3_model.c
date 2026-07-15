@@ -541,7 +541,11 @@ static void Mod_LoadTexinfo (lump_t *l)
 		out->flags = LittleLong (in->flags);
 		next = LittleLong (in->nexttexinfo);
 		if (next > 0)
+		{
+			if (next >= count)	// animation chain is walked as a pointer list
+				ri.Sys_Error (ERR_DROP, "Mod_LoadTexinfo: bad nexttexinfo in %s", loadmodel->name);
 			out->next = loadmodel->texinfo + next;
+		}
 		else
 		    out->next = NULL;
 		Com_sprintf (name, sizeof(name), "textures/%s.wal", in->texture);
@@ -849,6 +853,9 @@ static void Mod_LoadLeafs (lump_t *l)
 
 		out->cluster = LittleShort(in->cluster);
 		out->area = LittleShort(in->area);
+		// area indexes r_newrefdef.areabits[area>>3] (32 bytes) at render time
+		if (out->area < 0 || out->area >= MAX_MAP_AREAS)
+			ri.Sys_Error (ERR_DROP, "Mod_LoadLeafs: bad area in %s", loadmodel->name);
 
 		{
 			unsigned short firstmark = (unsigned short)LittleShort(in->firstleafface);
@@ -1033,6 +1040,10 @@ static void Mod_LoadBrushModel (model_t *mod, void *buffer)
 
 		starmod->firstmodelsurface = bm->firstface;
 		starmod->nummodelsurfaces = bm->numfaces;
+		// GL3_DrawBrushModel walks surfaces[firstmodelsurface .. +nummodel]
+		if (bm->firstface < 0 || bm->numfaces < 0
+			|| bm->firstface > loadmodel->numsurfaces - bm->numfaces)
+			ri.Sys_Error (ERR_DROP, "Inline model %i has bad surface range", i);
 		starmod->firstnode = bm->headnode;
 		if (starmod->firstnode >= loadmodel->numnodes)
 			ri.Sys_Error (ERR_DROP, "Inline model %i has bad firstnode", i);

@@ -348,6 +348,9 @@ void CMod_LoadLeafs (lump_t *l)
 		out->contents = LittleLong (in->contents);
 		out->cluster = LittleShort (in->cluster);
 		out->area = LittleShort (in->area);
+		// area indexes map_areas[MAX_MAP_AREAS] in CM_WriteAreaBits / CM_AreasConnected
+		if (out->area < 0 || out->area >= MAX_MAP_AREAS)
+			Com_Error (ERR_DROP, "CMod_LoadLeafs: bad area");
 		out->firstleafbrush = LittleShort (in->firstleafbrush);
 		out->numleafbrushes = LittleShort (in->numleafbrushes);
 		// CM_TraceToLeaf reads map_leafbrushes[firstleafbrush .. +numleafbrushes).
@@ -538,6 +541,12 @@ void CMod_LoadAreas (lump_t *l)
 	{
 		out->numareaportals = LittleLong (in->numareaportals);
 		out->firstareaportal = LittleLong (in->firstareaportal);
+		// FloodArea_r walks map_areaportals[first .. first+num). areaportals
+		// load after areas, so numareaportals is unknown here -- bound against
+		// the array capacity (overflow-safe form).
+		if (out->firstareaportal < 0 || out->numareaportals < 0
+			|| out->firstareaportal > MAX_MAP_AREAPORTALS - out->numareaportals)
+			Com_Error (ERR_DROP, "CMod_LoadAreas: bad areaportal range");
 		out->floodvalid = 0;
 		out->floodnum = 0;
 	}
@@ -573,6 +582,13 @@ void CMod_LoadAreaPortals (lump_t *l)
 	{
 		out->portalnum = LittleLong (in->portalnum);
 		out->otherarea = LittleLong (in->otherarea);
+		// portalnum indexes portalopen[MAX_MAP_AREAPORTALS]; otherarea indexes
+		// map_areas[] and is WRITTEN THROUGH by FloodArea_r (areas load first,
+		// so numareas is known)
+		if (out->portalnum < 0 || out->portalnum >= MAX_MAP_AREAPORTALS)
+			Com_Error (ERR_DROP, "CMod_LoadAreaPortals: bad portalnum");
+		if (out->otherarea < 0 || out->otherarea >= numareas)
+			Com_Error (ERR_DROP, "CMod_LoadAreaPortals: bad otherarea");
 	}
 }
 
