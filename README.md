@@ -23,6 +23,9 @@ layer) with full behavioural parity to id's `ref_gl`, plus modern additions:
 - Soft round particles, blob shadows — `gl_shadows`
 - Hi-res texture override packs (`.png`/`.tga`/`.jpg`) — `gl_retexture`
 - Red/cyan anaglyph stereo — `cl_stereo`, `cl_stereo_separation`
+- **Voxel render mode** — `r_voxelize` rebuilds the world (and, via
+  `r_voxelize_entities`, monsters/items) as a mesh of textured cubes at
+  `r_voxelsize` units; the real Quake textures project onto the cube faces
 - Live `vid_fullscreen` / `gl_mode` / UI-scale changes (no `vid_restart`)
 
 ### Gameplay & engine
