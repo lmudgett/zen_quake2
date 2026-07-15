@@ -153,6 +153,8 @@ static byte *Mod_DecompressVis (byte *in, model_t *model)
 
 		c = in[1];
 		in += 2;
+		if ((out - decompressed) + c > row)	// clamp the run so a crafted
+			c = row - (out - decompressed);	// vis lump can't overrun decompressed[]
 		while (c)
 		{
 			*out++ = 0;
@@ -170,7 +172,8 @@ GL3_Mod_ClusterPVS
 */
 byte *GL3_Mod_ClusterPVS (int cluster, model_t *model)
 {
-	if (cluster == -1 || !model->vis)
+	// reject an out-of-range cluster (crafted leaf) before it indexes bitofs[]
+	if (cluster < 0 || !model->vis || cluster >= model->vis->numclusters)
 		return mod_novis;
 	return Mod_DecompressVis ( (byte *)model->vis + model->vis->bitofs[cluster][DVIS_PVS],
 		model);
@@ -387,8 +390,10 @@ static void Mod_LoadVisibility (lump_t *l)
 	loadmodel->vis->numclusters = LittleLong (loadmodel->vis->numclusters);
 	// the bitofs[numclusters][2] table must fit inside the lump we allocated
 	// (4-byte numclusters header + 8 bytes per cluster); div form avoids
-	// overflow in numclusters * 8
+	// overflow in numclusters * 8. Also cap at MAX_MAP_LEAFS so the decode row
+	// (numclusters+7)>>3 cannot exceed Mod_DecompressVis's decompressed[] buffer.
 	if (loadmodel->vis->numclusters < 0
+		|| loadmodel->vis->numclusters > MAX_MAP_LEAFS
 		|| loadmodel->vis->numclusters > (l->filelen - 4) / 8)
 		ri.Sys_Error (ERR_DROP, "Mod_LoadVisibility: %s has bad numclusters", loadmodel->name);
 	for (i=0 ; i<loadmodel->vis->numclusters ; i++)

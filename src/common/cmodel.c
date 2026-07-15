@@ -1680,7 +1680,9 @@ byte	phsrow[MAX_MAP_LEAFS/8];
 
 byte	*CM_ClusterPVS (int cluster)
 {
-	if (cluster == -1)
+	// an out-of-range cluster (from a crafted leaf) would index bitofs[] out
+	// of bounds and yield a wild vis pointer; treat it as "sees nothing"
+	if (cluster < 0 || cluster >= numclusters)
 		memset (pvsrow, 0, (numclusters+7)>>3);
 	else
 		CM_DecompressVis (map_visibility + map_vis->bitofs[cluster][DVIS_PVS], pvsrow);
@@ -1689,7 +1691,7 @@ byte	*CM_ClusterPVS (int cluster)
 
 byte	*CM_ClusterPHS (int cluster)
 {
-	if (cluster == -1)
+	if (cluster < 0 || cluster >= numclusters)
 		memset (phsrow, 0, (numclusters+7)>>3);
 	else
 		CM_DecompressVis (map_visibility + map_vis->bitofs[cluster][DVIS_PHS], phsrow);
@@ -1758,8 +1760,10 @@ void	FloodAreaConnections (void)
 
 void	CM_SetAreaPortalState (int portalnum, qboolean open)
 {
-	if (portalnum > numareaportals)
-		Com_Error (ERR_DROP, "areaportal > numareaportals");
+	// portalnum comes from an entity "style" key (atoi) -> attacker-controlled
+	// via a crafted map; it indexes portalopen[]
+	if (portalnum < 0 || portalnum >= numareaportals)
+		Com_Error (ERR_DROP, "areaportal out of range");
 
 	portalopen[portalnum] = open;
 	FloodAreaConnections ();
