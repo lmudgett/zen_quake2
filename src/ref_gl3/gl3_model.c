@@ -857,6 +857,10 @@ static void Mod_LoadLeafs (lump_t *l)
 		out->contents = p;
 
 		out->cluster = LittleShort(in->cluster);
+		// -1 (no cluster) is valid; anything below indexes vis[cluster>>3]
+		// out of bounds in GL3_MarkLeaves
+		if (out->cluster < -1)
+			ri.Sys_Error (ERR_DROP, "Mod_LoadLeafs: bad cluster in %s", loadmodel->name);
 		out->area = LittleShort(in->area);
 		// area indexes r_newrefdef.areabits[area>>3] (32 bytes) at render time
 		if (out->area < 0 || out->area >= MAX_MAP_AREAS)
@@ -1050,6 +1054,9 @@ static void Mod_LoadBrushModel (model_t *mod, void *buffer)
 			|| bm->firstface > loadmodel->numsurfaces - bm->numfaces)
 			ri.Sys_Error (ERR_DROP, "Inline model %i has bad surface range", i);
 		starmod->firstnode = bm->headnode;
+		// a valid inline model may have a negative (leaf-encoded) headnode --
+		// only the upper bound is a load error; the dynamic-light path guards
+		// the negative case itself (GL3_DrawBrushModel)
 		if (starmod->firstnode >= loadmodel->numnodes)
 			ri.Sys_Error (ERR_DROP, "Inline model %i has bad firstnode", i);
 

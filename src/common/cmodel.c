@@ -347,6 +347,10 @@ void CMod_LoadLeafs (lump_t *l)
 	{
 		out->contents = LittleLong (in->contents);
 		out->cluster = LittleShort (in->cluster);
+		// -1 (no cluster) is valid; below that indexes visbits[cluster>>3]
+		// out of bounds in CM_HeadnodeVisible
+		if (out->cluster < -1)
+			Com_Error (ERR_DROP, "CMod_LoadLeafs: bad cluster");
 		out->area = LittleShort (in->area);
 		// area indexes map_areas[MAX_MAP_AREAS] in CM_WriteAreaBits / CM_AreasConnected
 		if (out->area < 0 || out->area >= MAX_MAP_AREAS)

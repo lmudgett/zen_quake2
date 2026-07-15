@@ -1247,8 +1247,11 @@ void GL3_DrawBrushModel (entity_t *e, const float *viewproj)
 	// same approximation the original used for moving models). CPU lightmap
 	// mode only: per-pixel mode lights bmodels in the shader (marking here
 	// would double-apply), and flashblend draws glow balls instead
+	// firstnode < 0 is a valid leaf-encoded headnode (submodel with no node
+	// subtree); nodes + firstnode would be a wild pointer, so skip marking
 	if (gl_dynamic && gl_dynamic->value == 1
-		&& !(gl_flashblend && gl_flashblend->value))
+		&& !(gl_flashblend && gl_flashblend->value)
+		&& mod->firstnode >= 0)
 	{
 		dlight_t	*lt = r_newrefdef.dlights;
 		for (i = 0; i < r_newrefdef.num_dlights; i++, lt++)
