@@ -113,6 +113,9 @@ static const char *frag3d =
 	"uniform vec3 u_tbn_b;\n"
 	"uniform vec3 u_tbn_n;\n"
 	"uniform int u_lightmode;\n"		// dev: 1 = r_fullbright, 2 = gl_lightmap
+	"uniform sampler2D u_scene;\n"		// opaque-scene grab (glass refraction)
+	"uniform int u_refract;\n"			// 1 = composite refracted scene (blend off)
+	"uniform vec2 u_rscale;\n"			// max refraction offset in scene-texture uv
 	"out vec4 frag;\n"
 	"void main() {\n"	// gamma applied once in the post pass, like id's ramp
 	"    vec4 diff = texture(u_tex, v_uv);\n"
@@ -137,7 +140,16 @@ static const char *frag3d =
 	"        c *= light;\n"
 	"        if (u_lightmode == 2) c = light * 0.5;\n"	// raw lightmap, no overbright
 	"    }\n"
-	"    frag = vec4(c, diff.a * u_alpha);\n"
+	"    if (u_refract != 0) {\n"
+	// glass: bend the grabbed scene by the surface's tangent-space normal
+	// map (auto-generated when no _n override exists); a flat normal falls
+	// back to a straight composite, identical to plain alpha blending
+	"        vec2 nm2 = texture(u_normalmap, v_uv).xy * 2.0 - 1.0;\n"
+	"        vec2 suv = gl_FragCoord.xy / vec2(textureSize(u_scene, 0));\n"
+	"        vec3 behind = texture(u_scene, suv + nm2 * u_rscale).rgb;\n"
+	"        frag = vec4(mix(behind, c, u_alpha), 1.0);\n"
+	"    } else\n"
+	"        frag = vec4(c, diff.a * u_alpha);\n"
 	"}\n";
 
 gl3prog3d_t	gl3_prog3d;
@@ -196,6 +208,9 @@ static const char *fragWarp =
 	"uniform float u_intensity;\n"
 	"uniform float u_alpha;\n"		// translucent water (TRANS33/66)
 	"uniform float u_scroll;\n"		// SURF_FLOWING, raw units
+	"uniform sampler2D u_scene;\n"	// opaque-scene grab (refraction)
+	"uniform int u_refract;\n"		// 1 = composite refracted scene (blend off)
+	"uniform vec2 u_rscale;\n"		// max refraction offset in scene-texture uv
 	"out vec4 frag;\n"
 	// id's per-vertex turbsin displacement (EmitWaterPolys)
 	"vec2 warp_at(vec2 p) {\n"
@@ -213,7 +228,14 @@ static const char *fragWarp =
 	"                 mix(warp_at(c0 + vec2(0.0, 64.0)),  warp_at(c0 + vec2(64.0, 64.0)), fr.x), fr.y);\n"
 	"    vec2 w = (v_uv + d + vec2(u_scroll, 0.0)) / 64.0;\n"
 	"    vec4 t = texture(u_tex, w);\n"
-	"    frag = vec4(t.rgb * u_intensity, t.a * u_alpha);\n"
+	"    if (u_refract != 0) {\n"
+	// the same choppy id displacement that warps the texture also bends the
+	// grabbed scene: what's underwater visibly sloshes with the surface
+	"        vec2 suv = gl_FragCoord.xy / vec2(textureSize(u_scene, 0));\n"
+	"        vec3 behind = texture(u_scene, suv + (d / 8.0) * u_rscale).rgb;\n"
+	"        frag = vec4(mix(behind, t.rgb * u_intensity, u_alpha), 1.0);\n"
+	"    } else\n"
+	"        frag = vec4(t.rgb * u_intensity, t.a * u_alpha);\n"
 	"}\n";
 
 gl3progwarp_t	gl3_prog_warp;
@@ -317,15 +339,19 @@ void GL3_InitShaders (void)
 	gl3_prog3d.u_tbn_b = glGetUniformLocation (gl3_prog3d.program, "u_tbn_b");
 	gl3_prog3d.u_tbn_n = glGetUniformLocation (gl3_prog3d.program, "u_tbn_n");
 	gl3_prog3d.u_lightmode = glGetUniformLocation (gl3_prog3d.program, "u_lightmode");
+	gl3_prog3d.u_refract = glGetUniformLocation (gl3_prog3d.program, "u_refract");
+	gl3_prog3d.u_rscale = glGetUniformLocation (gl3_prog3d.program, "u_rscale");
 	glUseProgram (gl3_prog3d.program);
 	glUniform1i (gl3_prog3d.u_lightmode, 0);
 	glUniform1f (gl3_prog3d.u_alpha, 1.0f);
 	glUniform1f (gl3_prog3d.u_scroll, 0.0f);
 	glUniform1i (gl3_prog3d.u_num_dlights, 0);
 	glUniform1i (gl3_prog3d.u_bump, 0);
+	glUniform1i (gl3_prog3d.u_refract, 0);
 	glUniform1i (glGetUniformLocation (gl3_prog3d.program, "u_normalmap"), 2);	// unit 2
 	glUniform1i (glGetUniformLocation (gl3_prog3d.program, "u_tex"), 0);		// diffuse on unit 0
 	glUniform1i (glGetUniformLocation (gl3_prog3d.program, "u_lightmap"), 1);	// lightmap on unit 1
+	glUniform1i (glGetUniformLocation (gl3_prog3d.program, "u_scene"), 3);		// refraction grab on unit 3
 
 	gl3_prog_alias.program = GL3_CompileProgram (vtxAlias, fragAlias);
 	gl3_prog_alias.u_mvp = glGetUniformLocation (gl3_prog_alias.program, "u_mvp");
@@ -353,10 +379,14 @@ void GL3_InitShaders (void)
 	gl3_prog_warp.u_intensity = glGetUniformLocation (gl3_prog_warp.program, "u_intensity");
 	gl3_prog_warp.u_alpha = glGetUniformLocation (gl3_prog_warp.program, "u_alpha");
 	gl3_prog_warp.u_scroll = glGetUniformLocation (gl3_prog_warp.program, "u_scroll");
+	gl3_prog_warp.u_refract = glGetUniformLocation (gl3_prog_warp.program, "u_refract");
+	gl3_prog_warp.u_rscale = glGetUniformLocation (gl3_prog_warp.program, "u_rscale");
 	glUseProgram (gl3_prog_warp.program);
 	glUniform1f (gl3_prog_warp.u_alpha, 1.0f);
 	glUniform1f (gl3_prog_warp.u_scroll, 0.0f);
+	glUniform1i (gl3_prog_warp.u_refract, 0);
 	glUniform1i (glGetUniformLocation (gl3_prog_warp.program, "u_tex"), 0);
+	glUniform1i (glGetUniformLocation (gl3_prog_warp.program, "u_scene"), 1);	// refraction grab on unit 1
 
 	gl3_prog_voxel.program = GL3_CompileProgram (vtxVoxel, fragVoxel);
 	gl3_prog_voxel.u_mvp = glGetUniformLocation (gl3_prog_voxel.program, "u_mvp");

@@ -102,6 +102,8 @@ typedef struct
 	GLint	u_tbn_b;
 	GLint	u_tbn_n;
 	GLint	u_lightmode;	// dev: 1 = r_fullbright, 2 = gl_lightmap
+	GLint	u_refract;		// glass: composite the refracted scene grab
+	GLint	u_rscale;		// max refraction offset in scene-texture uv
 } gl3prog3d_t;
 
 extern gl3prog3d_t	gl3_prog3d;
@@ -116,6 +118,8 @@ typedef struct
 	GLint	u_intensity;
 	GLint	u_alpha;		// translucent water
 	GLint	u_scroll;		// SURF_FLOWING scroll (raw units)
+	GLint	u_refract;		// composite the refracted scene grab
+	GLint	u_rscale;		// max refraction offset in scene-texture uv
 } gl3progwarp_t;
 extern gl3progwarp_t	gl3_prog_warp;
 
@@ -166,6 +170,7 @@ extern cvar_t	*gl_bloom;
 extern cvar_t	*r_voxelize;			// voxel render mode: rebuild the scene as cubes
 extern cvar_t	*r_voxelsize;			// voxel grid resolution, world units
 extern cvar_t	*r_voxelize_entities;	// also voxelize alias models + the view weapon
+extern cvar_t	*gl_refraction;			// glass/translucent water refract the scene
 
 // gl3_post.c -- scene FBO and post-processing (gamma, underwater warp, bloom)
 void  GL3_Post_Init (void);
@@ -176,6 +181,7 @@ float GL3_Post_FrameScale (void);	// virtual 2D coords -> scene FBO pixels
 int   GL3_Post_Width (void);
 int   GL3_Post_Height (void);
 GLuint GL3_Post_ResolveDepth (void);	// copy scene depth to a texture (soft particles)
+GLuint GL3_Post_ResolveColor (void);	// copy scene color to a texture (refraction grab)
 
 // anisotropic filtering enums (extension is ubiquitous; glad may omit them)
 #ifndef GL_TEXTURE_MAX_ANISOTROPY_EXT
@@ -220,6 +226,7 @@ void GL3_EndBuildingLightmaps (void);
 void GL3_BuildWorldVBO (void);			// upload all world polys after registration
 void GL3_ShutdownSurf (void);			// free world VBO/VAO and lightmap textures
 void GL3_MarkVisibleSurfaces (void);	// stamp surf->drawframe for this frame's PVS (voxel mode)
+void GL3_SetRefractionTex (GLuint tex);	// scene grab for the translucent pass (0 = plain blending)
 void GL3_UploadDlights (const vec3_t move);	// per-pixel dlight uniforms (gl_dynamic 2)
 void GL3_DrawWorld (void);				// draw the visible world this frame
 void GL3_DrawWorldTranslucent (void);	// TRANS33/66 surfaces, blended pass

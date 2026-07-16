@@ -15,6 +15,7 @@ cvar_t	*gl_intensity;
 cvar_t	*gl_wateralpha;
 cvar_t	*gl_slimealpha;
 cvar_t	*gl_2dscale;
+cvar_t	*gl_refraction;
 cvar_t	*gl_anisotropy;
 cvar_t	*gl_shadows;
 cvar_t	*gl_retexture;
@@ -280,6 +281,9 @@ static void GL3_RenderFrame (refdef_t *fd)
 			GL3_RenderDlights (gl3_viewproj);	// gl_flashblend glow balls
 			GL3_DrawParticles (gl3_viewproj);	// id: particles BEFORE alpha
 												// surfaces, so glass tints them
+			// grab the opaque scene so glass/translucent water can refract it
+			GL3_SetRefractionTex ((gl_refraction && gl_refraction->value)
+				? GL3_Post_ResolveColor () : 0);
 			GL3_DrawWorldTranslucent ();		// glass / force fields, blended
 		}
 	}
@@ -366,6 +370,7 @@ static int GL3_Init (void *hinstance, void *wndproc)
 	gl_wateralpha = ri.Cvar_Get ("gl_wateralpha", "0.75", CVAR_ARCHIVE);
 	gl_slimealpha = ri.Cvar_Get ("gl_slimealpha", "1", CVAR_ARCHIVE);	// acid: opaque like vanilla
 	gl_2dscale = ri.Cvar_Get ("gl_2dscale", "0", CVAR_ARCHIVE);	// 0 = auto
+	gl_refraction = ri.Cvar_Get ("gl_refraction", "1", CVAR_ARCHIVE);	// glass/water refract
 	gl_anisotropy = ri.Cvar_Get ("gl_anisotropy", "8", CVAR_ARCHIVE);
 	gl_shadows = ri.Cvar_Get ("gl_shadows", "1", CVAR_ARCHIVE);	// soft blob shadows
 	gl_retexture = ri.Cvar_Get ("gl_retexture", "1", CVAR_ARCHIVE);	// hi-res texture packs

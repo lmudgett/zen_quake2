@@ -1065,20 +1065,44 @@ Second pass: TRANS33/TRANS66 surfaces (glass, force fields, some water)
 drawn alpha-blended after the opaque world. Depth-tested but not written.
 =================
 */
+// scene grab for refraction, set per frame by GL3_RenderFrame (0 = off)
+static GLuint	refract_tex;
+
+void GL3_SetRefractionTex (GLuint tex)
+{
+	refract_tex = tex;
+}
+
 void GL3_DrawWorldTranslucent (void)
 {
-	int			i;
+	int			i, refract;
 	msurface_t	*surf;
 
 	if (!r_worldmodel || !world_vao)
 		return;
 
+	refract = refract_tex != 0;
+
 	glUseProgram (gl3_prog3d.program);
 	glUniformMatrix4fv (gl3_prog3d.u_mvp, 1, GL_FALSE, gl3_viewproj);	// entities may have changed it
 	glUniform1i (gl3_prog3d.u_lm_enabled, 0);
 	GL3_UploadDlights (vec3_origin);	// bmodels may have left theirs bound
-	glEnable (GL_BLEND);
-	glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glUniform1i (gl3_prog3d.u_refract, refract);
+	if (refract)
+	{
+		// the shaders composite the grabbed scene themselves: no blending.
+		// Offset budget ~0.8% of the frame height, resolution-independent
+		float	rs = GL3_Post_Height () * 0.008f;
+		glUniform2f (gl3_prog3d.u_rscale, rs / GL3_Post_Width (), rs / GL3_Post_Height ());
+		glActiveTexture (GL_TEXTURE3);
+		glBindTexture (GL_TEXTURE_2D, refract_tex);
+		glActiveTexture (GL_TEXTURE0);
+	}
+	else
+	{
+		glEnable (GL_BLEND);
+		glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	}
 	glDepthMask (GL_FALSE);
 	glBindVertexArray (world_vao);
 
@@ -1103,19 +1127,39 @@ void GL3_DrawWorldTranslucent (void)
 			img = r_notexture;
 		GL3_Bind (img->texnum);
 
+		if (refract)
+		{
+			// the glass normal map drives the refraction offset; a missing
+			// map falls back flat (zero offset = plain composite)
+			glActiveTexture (GL_TEXTURE2);
+			glBindTexture (GL_TEXTURE_2D, img->normaltex ? img->normaltex : gl3_flat_normal);
+			glActiveTexture (GL_TEXTURE0);
+		}
+
 		for (p = surf->polys; p; p = p->next)
 			glDrawArrays (GL_TRIANGLE_FAN, p->vbo_firstvert, p->numverts);
 	}
 
 	glUniform1f (gl3_prog3d.u_alpha, 1.0f);
+	glUniform1i (gl3_prog3d.u_refract, 0);
 
-	// translucent water/lava/slime: warp shader, still blended, no depth writes.
+	// translucent water/lava/slime: warp shader, no depth writes; with
+	// refraction the shader composites the grab, otherwise plain blending.
 	// intensity neutral, like id's inverse_intensity scale for alpha surfaces
 	glUseProgram (gl3_prog_warp.program);
 	glUniformMatrix4fv (gl3_prog_warp.u_mvp, 1, GL_FALSE, gl3_viewproj);
 	glUniform1f (gl3_prog_warp.u_time, r_newrefdef.time);
 	glUniform1f (gl3_prog_warp.u_gamma, vid_gamma->value < 0.5f ? 0.5f : vid_gamma->value);
 	glUniform1f (gl3_prog_warp.u_intensity, 1.0f);
+	glUniform1i (gl3_prog_warp.u_refract, refract);
+	if (refract)
+	{
+		float	rs = GL3_Post_Height () * 0.008f;
+		glUniform2f (gl3_prog_warp.u_rscale, rs / GL3_Post_Width (), rs / GL3_Post_Height ());
+		glActiveTexture (GL_TEXTURE1);
+		glBindTexture (GL_TEXTURE_2D, refract_tex);
+		glActiveTexture (GL_TEXTURE0);
+	}
 
 	surf = r_worldmodel->surfaces;
 	for (i = 0; i < r_worldmodel->numsurfaces; i++, surf++)
@@ -1144,6 +1188,7 @@ void GL3_DrawWorldTranslucent (void)
 	}
 
 	glUniform1f (gl3_prog_warp.u_alpha, 1.0f);
+	glUniform1i (gl3_prog_warp.u_refract, 0);
 	glDepthMask (GL_TRUE);
 	glDisable (GL_BLEND);
 }

@@ -50,6 +50,11 @@ static GLuint	tex_bloom[2];
 static GLuint	fbo_depthcopy;
 static GLuint	tex_depthcopy;
 
+// color copy of the opaque scene, grabbed before the translucent pass so
+// glass and translucent water can refract what is behind them
+static GLuint	fbo_scenecopy;
+static GLuint	tex_scenecopy;
+
 static int		fb_width, fb_height;	// current scene FBO size
 static int		fb_samples;
 static int		bloom_w, bloom_h;
@@ -134,6 +139,8 @@ static void GL3_Post_DestroyTargets (void)
 	if (tex_bloom[0])	{ glDeleteTextures (2, tex_bloom); tex_bloom[0] = tex_bloom[1] = 0; }
 	if (fbo_depthcopy)	{ glDeleteFramebuffers (1, &fbo_depthcopy); fbo_depthcopy = 0; }
 	if (tex_depthcopy)	{ glDeleteTextures (1, &tex_depthcopy); tex_depthcopy = 0; }
+	if (fbo_scenecopy)	{ glDeleteFramebuffers (1, &fbo_scenecopy); fbo_scenecopy = 0; }
+	if (tex_scenecopy)	{ glDeleteTextures (1, &tex_scenecopy); tex_scenecopy = 0; }
 	fb_width = fb_height = fb_samples = 0;
 }
 
@@ -239,6 +246,18 @@ static void GL3_Post_CreateTargets (void)
 	glDrawBuffer (GL_NONE);
 	glReadBuffer (GL_NONE);
 
+	// scene color copy for refraction (same HDR format as the scene)
+	glGenTextures (1, &tex_scenecopy);
+	glBindTexture (GL_TEXTURE_2D, tex_scenecopy);
+	glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_HALF_FLOAT, NULL);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glGenFramebuffers (1, &fbo_scenecopy);
+	glBindFramebuffer (GL_FRAMEBUFFER, fbo_scenecopy);
+	glFramebufferTexture2D (GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex_scenecopy, 0);
+
 	glBindFramebuffer (GL_FRAMEBUFFER, 0);
 	glBindTexture (GL_TEXTURE_2D, 0);
 	gl3state.currenttexture = -1;
@@ -257,6 +276,21 @@ GLuint GL3_Post_ResolveDepth (void)
 	glBindFramebuffer (GL_FRAMEBUFFER, src);
 
 	return tex_depthcopy;
+}
+
+// blit (and, under MSAA, resolve) the scene color so far into a sampleable
+// texture and re-bind the scene target; the refraction grab pass
+GLuint GL3_Post_ResolveColor (void)
+{
+	GLuint	src = fb_samples ? fbo_ms : fbo_scene;
+
+	glBindFramebuffer (GL_READ_FRAMEBUFFER, src);
+	glBindFramebuffer (GL_DRAW_FRAMEBUFFER, fbo_scenecopy);
+	glBlitFramebuffer (0, 0, fb_width, fb_height, 0, 0, fb_width, fb_height,
+		GL_COLOR_BUFFER_BIT, GL_NEAREST);
+	glBindFramebuffer (GL_FRAMEBUFFER, src);
+
+	return tex_scenecopy;
 }
 
 // ------------------------------------------------------------------ frame
