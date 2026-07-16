@@ -1,9 +1,13 @@
 // gl3_screenshot.c -- "screenshot" console command. Captures the back buffer
 // at end-of-frame (after drawing, before swap) so the image is exactly what
 // was rendered; front-buffer reads are unreliable under the Windows compositor.
+// Written as PNG via the vendored stb_image_write (v1.16).
 
 #include "gl3_local.h"
 #include <stdio.h>
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
 static qboolean	screenshot_pending;
 
@@ -15,10 +19,9 @@ void GL3_ScreenShot_f (void)
 // called from GL3_EndFrame after the frame is drawn, before the buffer swap
 void GL3_ScreenShot_Capture (void)
 {
-	int		w, h, size, i;
-	byte	*rgb, *tga;
+	int		w, h;
+	byte	*rgb;
 	char	path[MAX_QPATH];
-	FILE	*f;
 
 	if (!screenshot_pending)
 		return;
@@ -26,33 +29,39 @@ void GL3_ScreenShot_Capture (void)
 
 	w = gl3state.width;
 	h = gl3state.height;
-	size = w * h * 3;
 
-	rgb = malloc (size);
+	rgb = malloc (w * h * 3);
 	if (!rgb)
 		return;
 
 	glReadBuffer (GL_BACK);
 	glPixelStorei (GL_PACK_ALIGNMENT, 1);
-	glReadPixels (0, 0, w, h, GL_BGR, GL_UNSIGNED_BYTE, rgb);
+	glReadPixels (0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, rgb);
 
-	tga = malloc (size + 18);
-	memset (tga, 0, 18);
-	tga[2] = 2;					// uncompressed true-colour
-	tga[12] = w & 255;   tga[13] = (w >> 8) & 255;
-	tga[14] = h & 255;   tga[15] = (h >> 8) & 255;
-	tga[16] = 24;
-	memcpy (tga + 18, rgb, size);	// GL bottom-left origin == TGA default
-
-	Com_sprintf (path, sizeof(path), "%s/screenshot.tga", ri.FS_Gamedir ());
-	f = fopen (path, "wb");
-	if (f)
+	// numbered like id's quake00-99.tga so successive shots don't overwrite
 	{
-		fwrite (tga, 1, size + 18, f);
-		fclose (f);
-		ri.Con_Printf (PRINT_ALL, "Wrote %s (%dx%d)\n", path, w, h);
+		int		n;
+		FILE	*probe;
+
+		for (n = 0; n < 1000; n++)
+		{
+			Com_sprintf (path, sizeof(path), "%s/screenshot%03d.png", ri.FS_Gamedir (), n);
+			probe = fopen (path, "rb");
+			if (!probe)
+				break;
+			fclose (probe);
+		}
+		if (n == 1000)
+		{
+			ri.Con_Printf (PRINT_ALL, "screenshot: all 1000 slots taken\n");
+			free (rgb);
+			return;
+		}
 	}
 
-	free (tga);
+	stbi_flip_vertically_on_write (1);	// GL rows are bottom-up, PNG top-down
+	if (stbi_write_png (path, w, h, 3, rgb, w * 3))
+		ri.Con_Printf (PRINT_ALL, "Wrote %s (%dx%d)\n", path, w, h);
+
 	free (rgb);
 }
