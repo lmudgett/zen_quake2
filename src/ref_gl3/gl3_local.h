@@ -41,7 +41,7 @@ typedef struct
 {
 	int			width, height;		// current drawable size in pixels
 	int			vw, vh;				// virtual 2D resolution reported to the client
-	int			scale;				// real pixels per virtual pixel (UI scale)
+	float		scale;				// real pixels per virtual pixel (UI scale)
 	qboolean	fullscreen;
 	SDL_Window	*window;
 	SDL_GLContext	context;

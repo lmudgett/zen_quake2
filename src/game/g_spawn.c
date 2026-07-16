@@ -977,9 +977,10 @@ void SP_worldspawn (edict_t *ent)
 
 	gi.configstring (CS_MAXCLIENTS, va("%i", (int)(maxclients->value) ) );
 
-	// status bar program: hud_wide (default) anchors it to the screen
-	// edges for 16:9; hud_wide 0 keeps the classic centered 4:3 strip
-	cvar_t	*hud_wide = gi.cvar ("hud_wide", "1", CVAR_ARCHIVE);
+	// status bar program: the default is the classic centered strip, whose
+	// layout never changes with aspect; hud_wide 1 anchors health/ammo to
+	// the screen edges for 16:9 instead
+	cvar_t	*hud_wide = gi.cvar ("hud_wide", "0", CVAR_ARCHIVE);
 	if (deathmatch->value)
 		gi.configstring (CS_STATUSBAR, hud_wide->value ? dm_statusbar_wide : dm_statusbar);
 	else

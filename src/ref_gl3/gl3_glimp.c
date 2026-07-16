@@ -89,17 +89,20 @@ the UI stays readable at high resolutions.
 */
 void GL3_UpdateViddef (void)
 {
-	int	scale = (int)gl_2dscale->value;
+	float	scale = gl_2dscale->value;
 
-	if (scale < 1)
-	{	// auto: integer scale that keeps the UI near a 600-line layout
-		scale = (int)(gl3state.height / 600.0f + 0.5f);
-		if (scale < 1)
-			scale = 1;
+	if (scale < 1.0f)
+	{	// auto: hold a constant 600-line virtual layout at every resolution
+		// and aspect, so the HUD keeps the same share of the screen whether
+		// windowed, fullscreen, or stretched (fractional scale is fine -- the
+		// ortho projection does the sampling)
+		scale = gl3state.height / 600.0f;
+		if (scale < 1.0f)
+			scale = 1.0f;
 	}
 	gl3state.scale = scale;
-	gl3state.vw = (gl3state.width + scale - 1) / scale;
-	gl3state.vh = (gl3state.height + scale - 1) / scale;
+	gl3state.vw = (int)(gl3state.width / scale + 0.5f);
+	gl3state.vh = (int)(gl3state.height / scale + 0.5f);
 
 	glViewport (0, 0, gl3state.width, gl3state.height);
 	ri.Vid_NewWindow (gl3state.vw, gl3state.vh);
