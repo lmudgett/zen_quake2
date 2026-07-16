@@ -107,6 +107,11 @@ void GL3_DrawParticles (const float *viewproj)
 	glEnable (GL_BLEND);
 	glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glDepthMask (GL_FALSE);			// particles don't write depth
+	// the scene culls GL_FRONT faces (id convention) and the billboard strip
+	// winds counter-clockwise = front-facing: with culling left on, EVERY
+	// particle quad is culled. (Broke when the parity sweep moved particles
+	// ahead of the alpha pass, into a spot where culling is still enabled.)
+	glDisable (GL_CULL_FACE);
 
 	glBindVertexArray (part_vao);
 	glBindBuffer (GL_ARRAY_BUFFER, part_inst_vbo);
@@ -114,6 +119,7 @@ void GL3_DrawParticles (const float *viewproj)
 	glDrawArraysInstanced (GL_TRIANGLE_STRIP, 0, 4, n);
 	glBindVertexArray (0);
 
+	glEnable (GL_CULL_FACE);
 	glDepthMask (GL_TRUE);
 	glDisable (GL_BLEND);
 }

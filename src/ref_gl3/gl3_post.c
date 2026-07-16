@@ -222,15 +222,20 @@ static void GL3_Post_CreateTargets (void)
 	// depth copy target for soft particles
 	glGenTextures (1, &tex_depthcopy);
 	glBindTexture (GL_TEXTURE_2D, tex_depthcopy);
-	glTexImage2D (GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, w, h, 0,
-		GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, NULL);
+	// MUST be the same format as the scene depth (DEPTH24_STENCIL8): GL
+	// requires identical depth formats for glBlitFramebuffer depth blits --
+	// a DEPTH_COMPONENT24 target makes the blit an INVALID_OPERATION no-op,
+	// the copy reads zero, and the soft-particle fade discards every
+	// particle in the game (shipped broken since the soft-particle commit)
+	glTexImage2D (GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, w, h, 0,
+		GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, NULL);
 	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glGenFramebuffers (1, &fbo_depthcopy);
 	glBindFramebuffer (GL_FRAMEBUFFER, fbo_depthcopy);
-	glFramebufferTexture2D (GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, tex_depthcopy, 0);
+	glFramebufferTexture2D (GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, tex_depthcopy, 0);
 	glDrawBuffer (GL_NONE);
 	glReadBuffer (GL_NONE);
 
