@@ -31,6 +31,7 @@ struct model_s	*gun_model;
 //=============
 
 cvar_t		*crosshair;
+cvar_t		*cl_horplus;		// widescreen fov: hold the 4:3 vertical fov
 cvar_t		*cl_testparticles;
 cvar_t		*cl_testentities;
 cvar_t		*cl_testlights;
@@ -504,7 +505,20 @@ void V_RenderView( float stereo_separation )
 		cl.refdef.y = scr_vrect.y;
 		cl.refdef.width = scr_vrect.width;
 		cl.refdef.height = scr_vrect.height;
-		cl.refdef.fov_y = CalcFov (cl.refdef.fov_x, cl.refdef.width, cl.refdef.height);
+		if (cl_horplus->value)
+		{
+			// Hor+ widescreen: treat the fov cvar as the 4:3 horizontal fov.
+			// The vertical fov (and with it the view weapon's size and screen
+			// position) stays exactly as the original 4:3 game; wider screens
+			// gain horizontal view instead of losing vertical. At 4:3 this is
+			// identical to the id calculation.
+			cl.refdef.fov_y = CalcFov (cl.refdef.fov_x, 4, 3);
+			cl.refdef.fov_x = CalcFov (cl.refdef.fov_y, cl.refdef.height, cl.refdef.width);
+			if (cl.refdef.fov_x > 170)
+				cl.refdef.fov_x = 170;		// ultrawide sanity bound
+		}
+		else
+			cl.refdef.fov_y = CalcFov (cl.refdef.fov_x, cl.refdef.width, cl.refdef.height);
 		cl.refdef.time = cl.time*0.001;
 
 		cl.refdef.areabits = cl.frame.areabits;
@@ -575,6 +589,7 @@ void V_Init (void)
 	Cmd_AddCommand ("viewpos", V_Viewpos_f);
 
 	crosshair = Cvar_Get ("crosshair", "0", CVAR_ARCHIVE);
+	cl_horplus = Cvar_Get ("cl_horplus", "1", CVAR_ARCHIVE);
 
 	cl_testblend = Cvar_Get ("cl_testblend", "0", 0);
 	cl_testparticles = Cvar_Get ("cl_testparticles", "0", 0);
