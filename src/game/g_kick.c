@@ -15,9 +15,9 @@
 #define KICK_FRAMES		6		// md2 frames, one per server frame (0.6s)
 #define KICK_IMPACT		2		// frame on which the boot lands
 #define KICK_COOLDOWN	10		// server frames from one kick to the next
-#define KICK_RANGE		80.0f	// reach from the eye, world units
+#define KICK_RANGE		92.0f	// reach from the eye, world units
 #define KICK_DAMAGE		25
-#define KICK_KNOCKBACK	120		// the shove is the point of the move
+#define KICK_KNOCKBACK	180		// the shove is the point of the move
 
 /*
 =================
@@ -94,7 +94,9 @@ void Cmd_Kick_f (edict_t *ent)
 	client->kick_start = level.framenum + 1;
 	client->kick_wait = level.framenum + KICK_COOLDOWN;
 	client->kick_saved_gunframe = client->ps.gunframe;
-	gi.sound (ent, CHAN_WEAPON, gi.soundindex ("berserk/attack.wav"), 1, ATTN_NORM, 0);
+	// sexed exertion grunt -- resolves to the player model's own voice
+	// (player/male/jump1.wav for the marine), already precached by worldspawn
+	gi.sound (ent, CHAN_VOICE, gi.soundindex ("*jump1.wav"), 1, ATTN_NORM, 0);
 }
 
 /*

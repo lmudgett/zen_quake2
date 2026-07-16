@@ -581,6 +581,7 @@ KEYS MENU
 char *bindnames[][2] =
 {
 {"+attack", 		"attack"},
+{"kick", 			"boot kick"},
 {"weapnext", 		"next weapon"},
 {"+forward", 		"walk forward"},
 {"+back", 			"backpedal"},
@@ -613,6 +614,7 @@ static int		bind_grab;
 
 static menuframework_s	s_keys_menu;
 static menuaction_s		s_keys_attack_action;
+static menuaction_s		s_keys_kick_action;
 static menuaction_s		s_keys_change_weapon_action;
 static menuaction_s		s_keys_walk_forward_action;
 static menuaction_s		s_keys_backpedal_action;
@@ -750,6 +752,14 @@ static void Keys_MenuInit( void )
 	s_keys_attack_action.generic.ownerdraw = DrawKeyBindingFunc;
 	s_keys_attack_action.generic.localdata[0] = i;
 	s_keys_attack_action.generic.name	= bindnames[s_keys_attack_action.generic.localdata[0]][1];
+
+	s_keys_kick_action.generic.type	= MTYPE_ACTION;
+	s_keys_kick_action.generic.flags  = QMF_GRAYED;
+	s_keys_kick_action.generic.x		= 0;
+	s_keys_kick_action.generic.y		= y += 9;
+	s_keys_kick_action.generic.ownerdraw = DrawKeyBindingFunc;
+	s_keys_kick_action.generic.localdata[0] = ++i;
+	s_keys_kick_action.generic.name	= bindnames[s_keys_kick_action.generic.localdata[0]][1];
 
 	s_keys_change_weapon_action.generic.type	= MTYPE_ACTION;
 	s_keys_change_weapon_action.generic.flags  = QMF_GRAYED;
@@ -928,6 +938,7 @@ static void Keys_MenuInit( void )
 	s_keys_help_computer_action.generic.name	= bindnames[s_keys_help_computer_action.generic.localdata[0]][1];
 
 	Menu_AddItem( &s_keys_menu, ( void * ) &s_keys_attack_action );
+	Menu_AddItem( &s_keys_menu, ( void * ) &s_keys_kick_action );
 	Menu_AddItem( &s_keys_menu, ( void * ) &s_keys_change_weapon_action );
 	Menu_AddItem( &s_keys_menu, ( void * ) &s_keys_walk_forward_action );
 	Menu_AddItem( &s_keys_menu, ( void * ) &s_keys_backpedal_action );
