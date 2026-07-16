@@ -1036,6 +1036,10 @@ void ClientEndServerFrame (edict_t *ent)
 	bobcycle = (int)bobtime;
 	bobfracsin = fabs(sin(bobtime*M_PI));
 
+	// boot kick animation/impact -- before SV_CalcViewOffset so the
+	// impact frame's view punch (kick_angles) lands this frame
+	Kick_Update (ent);
+
 	// detect hitting the floor
 	P_FallingDamage (ent);
 

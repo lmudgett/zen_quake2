@@ -716,7 +716,7 @@ void SV_Kick_f (void)
 
 	if (Cmd_Argc() != 2)
 	{
-		Com_Printf ("Usage: kick <userid>\n");
+		Com_Printf ("Usage: kickplayer <userid>\n");
 		return;
 	}
 
@@ -1027,7 +1027,9 @@ SV_InitOperatorCommands
 void SV_InitOperatorCommands (void)
 {
 	Cmd_AddCommand ("heartbeat", SV_Heartbeat_f);
-	Cmd_AddCommand ("kick", SV_Kick_f);
+	// renamed from id's "kick" so the name forwards to the game DLL's
+	// boot-kick action; this admin command boots a player off the server
+	Cmd_AddCommand ("kickplayer", SV_Kick_f);
 	Cmd_AddCommand ("status", SV_Status_f);
 	Cmd_AddCommand ("serverinfo", SV_Serverinfo_f);
 	Cmd_AddCommand ("dumpuser", SV_DumpUser_f);

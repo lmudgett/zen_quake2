@@ -41,6 +41,11 @@ layer) with full behavioural parity to id's `ref_gl`, plus modern additions:
 - **Widescreen HUD** — `hud_wide 1` anchors health/ammo to the screen edges;
   the default is the classic centered layout (statusbar layout program,
   game-DLL side)
+- **Boot kick** — bind a key to `kick` for a Duke-style melee boot: the leg
+  lashes out, damages and shoves whatever it lands on, and can punt buttons
+  and barrels (`src/game/g_kick.c`; the generated leg view model lives in
+  `baseq2/models/weapons/v_kick`). id's admin kick command is now
+  `kickplayer`
 - **Nemesis** wave-survival mode — start a deathmatch and type `nemesis` in
   the console (`src/game/g_waves.c`)
 - **Asset cache** — keep pak assets resident across map changes (`cache_assets`)

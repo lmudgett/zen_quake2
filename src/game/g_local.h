@@ -608,6 +608,10 @@ void Wave_Start (edict_t *ent);
 void Wave_RunFrame (void);
 extern qboolean wave_active;
 
+// g_kick.c -- boot kick melee move
+void Cmd_Kick_f (edict_t *ent);
+void Kick_Update (edict_t *ent);
+
 //
 // g_items.c
 //
@@ -954,6 +958,12 @@ struct gclient_s
 	float		grenade_time;
 	int			silencer_shots;
 	int			weapon_sound;
+
+	// boot kick (g_kick.c)
+	qboolean	kicking;			// leg animation owns the view model
+	int			kick_start;			// level.framenum the kick began
+	int			kick_wait;			// no new kick before this framenum
+	int			kick_saved_gunframe;	// weapon anim frame to restore after
 
 	float		pickup_msg_time;
 

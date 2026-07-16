@@ -1004,6 +1004,12 @@ void SP_worldspawn (edict_t *ent)
 
 	PrecacheItem (FindItem ("Blaster"));
 
+	// boot kick (g_kick.c)
+	gi.modelindex ("models/weapons/v_kick/tris.md2");
+	gi.soundindex ("berserk/attack.wav");
+	gi.soundindex ("mutant/thud1.wav");
+	gi.soundindex ("tank/thud.wav");
+
 	gi.soundindex ("player/lava1.wav");
 	gi.soundindex ("player/lava2.wav");
 

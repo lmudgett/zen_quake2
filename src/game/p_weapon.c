@@ -288,6 +288,11 @@ void Think_Weapon (edict_t *ent)
 		ChangeWeapon (ent);
 	}
 
+	// the boot kick owns the view model; weapon state is frozen meanwhile
+	// (Kick_Update restores gunindex/gunframe when the kick ends)
+	if (ent->client->kicking)
+		return;
+
 	// call active weapon think routine
 	if (ent->client->pers.weapon && ent->client->pers.weapon->weaponthink)
 	{
