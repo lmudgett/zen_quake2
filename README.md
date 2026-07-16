@@ -23,6 +23,14 @@ layer) with full behavioural parity to id's `ref_gl`, plus modern additions:
 - Soft round particles, blob shadows — `gl_shadows`
 - Hi-res texture override packs (`.png`/`.tga`/`.jpg`) — `gl_retexture`
 - Red/cyan anaglyph stereo — `cl_stereo`, `cl_stereo_separation`
+- Glass and translucent-water refraction — see-through surfaces bend the
+  scene behind them (water sloshes it with the classic warp) instead of flat
+  alpha blending (`gl_refraction`, default on)
+- Hor+ widescreen FOV — the vertical view (and the classic weapon size and
+  position) matches the original 4:3 game on any aspect; wide screens see
+  more to the sides (`cl_horplus`, default on)
+- Resolution-independent HUD scale — the 2D layer holds a constant 600-line
+  virtual layout at every window size and aspect (`gl_2dscale`, 0 = auto)
 - **Voxel render mode** — `r_voxelize` rebuilds the world (and, via
   `r_voxelize_entities`, monsters/items) as a mesh of textured cubes at
   `r_voxelsize` units; the real Quake textures project onto the cube faces
@@ -30,7 +38,9 @@ layer) with full behavioural parity to id's `ref_gl`, plus modern additions:
 
 ### Gameplay & engine
 
-- **Widescreen HUD** — `hud_wide` (statusbar layout program, game-DLL side)
+- **Widescreen HUD** — `hud_wide 1` anchors health/ammo to the screen edges;
+  the default is the classic centered layout (statusbar layout program,
+  game-DLL side)
 - **Nemesis** wave-survival mode — start a deathmatch and type `nemesis` in
   the console (`src/game/g_waves.c`)
 - **Asset cache** — keep pak assets resident across map changes (`cache_assets`)
