@@ -273,6 +273,15 @@ void GL3_InitParticles (void);
 void GL3_ShutdownParticles (void);
 void GL3_DrawParticles (const float *viewproj);
 
+// impact-mark decals (gl3_decals.c): bullet holes / scorches, Q3-style
+extern cvar_t	*gl_decals;
+void GL3_InitDecals (void);
+void GL3_ShutdownDecals (void);
+void GL3_DecalsNewMap (void);		// wipe marks when the world changes
+void GL3_AddDecal (vec3_t origin, vec3_t dir, float radius, int type);
+void GL3_DrawDecals (const float *viewproj);
+void GL3_DrawDecalsHeat (const float *viewproj, GLuint scene_tex);	// hot-burn shimmer
+
 // voxel render mode (gl3_voxel.c): textured cube-face mesh, world + entities
 typedef struct
 {

@@ -725,7 +725,9 @@ void CL_ParseTEnt (void)
 		if (type != TE_SPARKS)
 		{
 			CL_SmokeAndFlash(pos);
-			
+			if (re.AddDecal)
+				re.AddDecal (pos, dir, 2.4f + frand()*0.8f, DECAL_BULLET);
+
 			// impact sound
 			cnt = rand()&15;
 			if (cnt == 1)
@@ -755,6 +757,8 @@ void CL_ParseTEnt (void)
 		MSG_ReadDir (&net_message, dir);
 		CL_ParticleEffect (pos, dir, 0, 20);
 		CL_SmokeAndFlash(pos);
+		if (re.AddDecal)
+			re.AddDecal (pos, dir, 2.0f + frand()*0.7f, DECAL_BULLET);
 		break;
 
 	case TE_SPLASH:			// bullet hitting water
@@ -799,6 +803,8 @@ void CL_ParseTEnt (void)
 		MSG_ReadPos (&net_message, pos);
 		MSG_ReadDir (&net_message, dir);
 		CL_BlasterParticles (pos, dir);
+		if (re.AddDecal)
+			re.AddDecal (pos, dir, 5.0f, DECAL_ENERGY);
 
 		ex = CL_AllocExplosion ();
 		VectorCopy (pos, ex->ent.origin);
@@ -829,6 +835,15 @@ void CL_ParseTEnt (void)
 		MSG_ReadPos (&net_message, pos2);
 		CL_RailTrail (pos, pos2);
 		S_StartSound (pos2, 0, 0, cl_sfx_railg, 1, ATTN_NORM, 0);
+		if (re.AddDecal)
+		{	// no impact normal on the wire: pull the endpoint back along
+			// the beam so it sits off the wall, then omni-project
+			vec3_t	rdir, rpos;
+			VectorSubtract (pos2, pos, rdir);
+			VectorNormalize (rdir);
+			VectorMA (pos2, -1.0f, rdir, rpos);
+			re.AddDecal (rpos, NULL, 6.0f, DECAL_RAIL);
+		}
 		break;
 
 	case TE_EXPLOSION2:
@@ -853,7 +868,11 @@ void CL_ParseTEnt (void)
 		if (type == TE_GRENADE_EXPLOSION_WATER)
 			S_StartSound (pos, 0, 0, cl_sfx_watrexp, 1, ATTN_NORM, 0);
 		else
+		{
 			S_StartSound (pos, 0, 0, cl_sfx_grenexp, 1, ATTN_NORM, 0);
+			if (re.AddDecal)
+				re.AddDecal (pos, NULL, 26.0f, DECAL_SCORCH);
+		}
 		break;
 
 	// RAFAEL
@@ -874,9 +893,11 @@ void CL_ParseTEnt (void)
 			ex->baseframe = 15;
 		ex->frames = 15;
 		CL_ExplosionParticles (pos);
+		if (re.AddDecal)
+			re.AddDecal (pos, NULL, 30.0f, DECAL_SCORCH);
 		S_StartSound (pos, 0, 0, cl_sfx_rockexp, 1, ATTN_NORM, 0);
 		break;
-	
+
 	case TE_EXPLOSION1:
 	case TE_EXPLOSION1_BIG:						// PMM
 	case TE_ROCKET_EXPLOSION:
@@ -906,7 +927,12 @@ void CL_ParseTEnt (void)
 		if (type == TE_ROCKET_EXPLOSION_WATER)
 			S_StartSound (pos, 0, 0, cl_sfx_watrexp, 1, ATTN_NORM, 0);
 		else
+		{
 			S_StartSound (pos, 0, 0, cl_sfx_rockexp, 1, ATTN_NORM, 0);
+			if (re.AddDecal)
+				re.AddDecal (pos, NULL,
+					(type == TE_EXPLOSION1_BIG) ? 45.0f : 30.0f, DECAL_SCORCH);
+		}
 		break;
 
 	case TE_BFG_EXPLOSION:
@@ -929,6 +955,8 @@ void CL_ParseTEnt (void)
 	case TE_BFG_BIGEXPLOSION:
 		MSG_ReadPos (&net_message, pos);
 		CL_BFGExplosionParticles (pos);
+		if (re.AddDecal)
+			re.AddDecal (pos, NULL, 45.0f, DECAL_BFG);
 		break;
 
 	case TE_BFG_LASER:
@@ -1007,6 +1035,8 @@ void CL_ParseTEnt (void)
 			CL_BlasterParticles2 (pos, dir, 0xd0);
 		else
 			CL_BlasterParticles2 (pos, dir, 0x6f); // 75
+		if (re.AddDecal)
+			re.AddDecal (pos, dir, 5.0f, DECAL_ENERGY);
 
 		ex = CL_AllocExplosion ();
 		VectorCopy (pos, ex->ent.origin);

@@ -276,15 +276,18 @@ static void GL3_RenderFrame (refdef_t *fd)
 		else
 		{
 			GL3_DrawWorld ();
+			GL3_DrawDecals (gl3_viewproj);		// impact marks, on the walls
 			GL3_DrawWater (gl3_viewproj, r_newrefdef.time);
 			GL3_DrawEntities ();
 			GL3_RenderDlights (gl3_viewproj);	// gl_flashblend glow balls
 			GL3_DrawParticles (gl3_viewproj);	// id: particles BEFORE alpha
 												// surfaces, so glass tints them
 			// grab the opaque scene so glass/translucent water can refract it
-			GL3_SetRefractionTex ((gl_refraction && gl_refraction->value)
-				? GL3_Post_ResolveColor () : 0);
+			GLuint grab = (gl_refraction && gl_refraction->value)
+				? GL3_Post_ResolveColor () : 0;
+			GL3_SetRefractionTex (grab);
 			GL3_DrawWorldTranslucent ();		// glass / force fields, blended
+			GL3_DrawDecalsHeat (gl3_viewproj, grab);	// hot burns shimmer
 		}
 	}
 
@@ -400,6 +403,7 @@ static int GL3_Init (void *hinstance, void *wndproc)
 	GL3_Draw_Init ();
 	GL3_InitMesh ();
 	GL3_InitParticles ();
+	GL3_InitDecals ();
 	GL3_InitVoxels ();
 	GL3_InitSky ();
 	GL3_Mod_Init ();
@@ -421,6 +425,7 @@ static void GL3_Shutdown (void)
 	GL3_ShutdownSurf ();
 	GL3_ShutdownMesh ();
 	GL3_ShutdownParticles ();
+	GL3_ShutdownDecals ();
 	GL3_ShutdownVoxels ();
 	GL3_ShutdownSky ();
 	GL3_Draw_Shutdown ();
@@ -460,6 +465,8 @@ Q2_DLL_EXPORT refexport_t GetRefAPI (refimport_t rimp)
 	re.DrawFill = GL3_Draw_Fill;
 	re.DrawFadeScreen = GL3_Draw_FadeScreen;
 	re.DrawStretchRaw = GL3_Draw_StretchRaw;
+
+	re.AddDecal = GL3_AddDecal;
 
 	re.CinematicSetPalette = GL3_CinematicSetPalette;
 	re.BeginFrame = GL3_BeginFrame;

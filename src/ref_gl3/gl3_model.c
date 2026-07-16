@@ -1404,6 +1404,7 @@ void GL3_BeginRegistration (char *model)
 	cvar_t	*flushmap;
 
 	registration_sequence++;
+	GL3_DecalsNewMap ();	// impact marks belong to the outgoing world
 
 	Com_sprintf (fullname, sizeof(fullname), "maps/%s.bsp", model);
 

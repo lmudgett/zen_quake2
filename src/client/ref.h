@@ -125,6 +125,13 @@ typedef struct
 
 #define	API_VERSION		3
 
+// weapon impact marks stamped onto world surfaces (re.AddDecal types)
+#define DECAL_BULLET	0		// gunshot hole
+#define DECAL_SCORCH	1		// explosion blast mark
+#define DECAL_ENERGY	2		// blaster burn
+#define DECAL_BFG		3		// scorch, tinted green at draw time
+#define DECAL_RAIL		4		// Q3-style blue energy splat
+
 //
 // these are the functions exported by the refresh module
 //
@@ -160,6 +167,11 @@ typedef struct
 	void	(*EndRegistration) (void);
 
 	void	(*RenderFrame) (refdef_t *fd);
+
+	// stamp an impact mark onto nearby world surfaces. dir = the impact
+	// plane normal for bullets/blaster; NULL for explosions, which project
+	// onto every facing surface within radius (they carry no direction)
+	void	(*AddDecal) (vec3_t origin, vec3_t dir, float radius, int type);
 
 	void	(*DrawGetPicSize) (int *w, int *h, char *name);	// will return 0 0 if not found
 	void	(*DrawPic) (int x, int y, char *name);
