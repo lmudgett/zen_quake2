@@ -15,17 +15,12 @@
 
 import math
 import struct
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+from q2gen import ROOT, hash01
+
 OUT_DIR = ROOT / "baseq2" / "sprites"
 SIZE = 64
 MAX_SKINNAME = 64
-
-def hash01(x, y, salt=0):
-    h = (x * 374761393 + y * 668265263 + salt * 2246822519) & 0xFFFFFFFF
-    h = (h ^ (h >> 13)) * 1274126177 & 0xFFFFFFFF
-    return ((h ^ (h >> 16)) & 0xFFFF) / 65536.0
 
 def in_ellipse(px, py, cx, cy, rx, ry, rot=0.0):
     """Distance in ellipse-normalized units (<1 = inside)."""

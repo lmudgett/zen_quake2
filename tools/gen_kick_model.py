@@ -19,16 +19,14 @@
 # Author: Len Mudgett
 
 import math
-import re
 import struct
 import sys
-from pathlib import Path
+
+from q2gen import ROOT, hash01, nearest_anorm
 
 DIAG = "--diag" in sys.argv     # axis-probe build: colored marker boxes
 
-ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = ROOT / "baseq2" / "models" / "weapons" / "v_kick"
-ANORMS_H = ROOT / "quake2" / "ref_gl" / "anorms.h"
 
 SKIN_NAME = b"models/weapons/v_kick/skin.tga"
 SKIN_W, SKIN_H = 64, 64
@@ -56,21 +54,6 @@ def rot_pitch(v, deg):
 def sepow(u, e):
     """Superellipse shaping: signed |u|^e -- rounds a circle toward a square."""
     return math.copysign(abs(u) ** e, u)
-
-# ---------------------------------------------------------------- anorms
-
-def load_anorms():
-    norms = []
-    for m in re.finditer(r"\{\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\}",
-                         ANORMS_H.read_text()):
-        norms.append(tuple(float(g) for g in m.groups()))
-    assert len(norms) == 162, f"expected 162 anorms, got {len(norms)}"
-    return norms
-
-ANORMS = load_anorms()
-
-def nearest_anorm(n):
-    return max(range(162), key=lambda i: vdot(n, ANORMS[i]))
 
 # ---------------------------------------------------------------- geometry
 #
@@ -320,12 +303,6 @@ def build_md2():
     return header + skins + st + tris + frames + glcmds
 
 # ---------------------------------------------------------------- skin paint
-
-def hash01(x, y, salt=0):
-    """Deterministic per-pixel noise in [0,1) -- no RNG state to drift."""
-    h = (x * 374761393 + y * 668265263 + salt * 2246822519) & 0xFFFFFFFF
-    h = (h ^ (h >> 13)) * 1274126177 & 0xFFFFFFFF
-    return ((h ^ (h >> 16)) & 0xFFFF) / 65536.0
 
 def px_rect(region):
     s0, t0, s1, t1 = region

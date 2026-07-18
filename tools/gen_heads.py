@@ -17,15 +17,13 @@
 # Author: Len Mudgett
 
 import math
-import re
 import struct
 import sys
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+from q2gen import ROOT, decode_pcx, hash01, nearest_anorm, read_pak
+
 PAK = ROOT / "build" / "baseq2" / "pak0.pak"
 OUT_ROOT = ROOT / "baseq2"
-ANORMS_H = ROOT / "quake2" / "ref_gl" / "anorms.h"
 
 MAX_SKINNAME = 64
 
@@ -78,41 +76,14 @@ REQUIRED = {
     "boss1", "boss2", "boss3/jorg", "boss3/rider",
 }
 
-# ---------------------------------------------------------------- anorms
-
-def load_anorms():
-    norms = []
-    for mm in re.finditer(r"\{\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\}",
-                          ANORMS_H.read_text()):
-        norms.append(tuple(float(g) for g in mm.groups()))
-    assert len(norms) == 162
-    return norms
-
-ANORMS = load_anorms()
-
-def nearest_anorm(n):
-    return max(range(162), key=lambda i: sum(n[j] * ANORMS[i][j] for j in range(3)))
-
-# ---------------------------------------------------------------- pcx / gore
-
-def decode_pcx(data):
-    """8-bit single-plane RLE pcx (the q2 skin format)."""
-    xmin, ymin, xmax, ymax = struct.unpack_from("<4H", data, 4)
-    w, h = xmax - xmin + 1, ymax - ymin + 1
-    pix = bytearray()
-    p = 128
-    end = len(data) - 769
-    while len(pix) < w * h and p < end:
-        b = data[p]; p += 1
-        if (b & 0xC0) == 0xC0:
-            pix += data[p:p + 1] * (b & 0x3F); p += 1
-        else:
-            pix.append(b)
-    return w, h, pix, data[-768:]
+# ---------------------------------------------------------------- gore
 
 def find_gore_uv(entries, skinname):
-    """Scan the monster's own skin for its goriest red patch: the spine's
-    texels come from there, so the color always matches the creature."""
+    """Scan the monster's own skin for a DARK red patch: the spine and
+    base cap sample it, and the alias pipeline renders texels at ~2x
+    intensity, so anything brighter than dried blood (or not strongly
+    red) comes out salmon/bone in game -- reject those outright and let
+    the caller fall back to the darkest patch instead."""
     data = entries.get(skinname.decode("latin-1").lower())
     if not data:
         return None
@@ -132,12 +103,14 @@ def find_gore_uv(entries, skinname):
                     rs += pal[c]; gs += pal[c + 1]; bs += pal[c + 2]
             n = B * B
             r, g, b = rs / n, gs / n, bs / n
-            score = r - 1.2 * max(g, b)
-            if r < 40 or r > 200:
-                score -= 50          # want dark gore, not neon or black
+            if r < 45 or r > 100:
+                continue             # dried-blood dark only
+            if max(g, b) > 0.6 * r:
+                continue             # strongly red only, no tan/skin tones
+            score = r - 1.5 * max(g, b)
             if best is None or score > best[0]:
                 best = (score, ((bx + B / 2) / w, (by + B / 2) / h))
-    if best and best[0] > 8:
+    if best and best[0] > 5:
         return best[1]
     return None
 
@@ -167,36 +140,34 @@ def find_dark_uv(entries, skinname):
 
 # ---------------------------------------------------------------- spine
 
-def hash01(a, b):
-    v = (a * 374761393 + b * 668265263) & 0xFFFFFFFF
-    v = (v ^ (v >> 13)) * 1274126177 & 0xFFFFFFFF
-    return ((v ^ (v >> 16)) & 0xFFFF) / 65536.0
-
 def add_spine(pts, norms, tris, gore_uv, head_h, head_w):
     """Vertebrae stub off the neck cut: exits heading down-and-back, then
     flattens to TRAIL along the floor (heads rest upright and only spin in
     yaw -- a straight-down spine would stilt the head into the air).
     Alternating fat/thin rings read as vertebrae and discs."""
     RING = 6
-    radii = [1.0, 0.68, 0.92, 0.6, 0.78]
-    L = min(9.0, max(4.5, 0.9 * head_h))
+    radii = [1.15, 0.7, 0.95, 0.62, 0.8]    # first ring fat: buried plug
+    L = min(10.0, max(5.5, 1.0 * head_h))
     R = min(1.2, max(0.6, 0.16 * head_w))
     su, sv = gore_uv
 
     # anchor at the skull base: the bottom region's own centroid, nudged
-    # toward the back -- a real spine meets the skull center-back, and
-    # bbox centering drags x=0 forward under the protruding face/chin
+    # toward the back -- but only within the neck opening's own rear
+    # extent, or the spine ends up floating BEHIND the head. The first
+    # ring starts buried well up inside the shell so the column visibly
+    # emerges from the head instead of hovering under it.
     hmax = max(p[2] for p in pts)
     low = [p for p in pts if p[2] <= 0.35 * hmax] or pts
     lcx = sum(p[0] for p in low) / len(low)
     lcy = sum(p[1] for p in low) / len(low)
-    xspan = max(p[0] for p in pts) - min(p[0] for p in pts)
-    ax_x = lcx - 0.14 * xspan
+    back_extent = lcx - min(p[0] for p in low)
+    ax_x = lcx - 0.35 * back_extent
+    z0 = 0.42 * hmax
 
     # stations along the exit curve
     stations = []
-    px, pz = ax_x, 1.7
-    a0, a1 = math.radians(70), math.radians(6)
+    px, pz = ax_x, z0
+    a0, a1 = math.radians(75), math.radians(6)
     step = L / (len(radii) - 1)
     for i in range(len(radii)):
         t = i / (len(radii) - 1.0)
@@ -307,19 +278,6 @@ def add_base_cap(pts, norms, tris, cap_uv):
             b1, c1 = c1, b1
         tris.append(((a1, uvv(k, 0)), (b1, uvv(k, 1)), (c1, uvv(k, 2))))
     return pts, norms, tris
-
-# ---------------------------------------------------------------- pak read
-
-def read_pak(path):
-    data = path.read_bytes()
-    ident, dirofs, dirlen = struct.unpack_from("<4sii", data, 0)
-    assert ident == b"PACK", "not a pak file"
-    entries = {}
-    for off in range(dirofs, dirofs + dirlen, 64):
-        name = data[off:off + 56].split(b"\0")[0].decode("latin-1").lower()
-        fpos, flen = struct.unpack_from("<ii", data, off + 56)
-        entries[name] = data[fpos:fpos + flen]
-    return entries
 
 # ---------------------------------------------------------------- md2 read
 

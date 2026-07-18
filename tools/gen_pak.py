@@ -11,16 +11,13 @@
 #
 # Author: Len Mudgett
 
-import struct
 import sys
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+from q2gen import ROOT, write_pak
+
 SRC = ROOT / "baseq2"
 OUT = ROOT / "build" / "baseq2" / "pak1.pak"
 MANIFEST = ROOT / "build" / "baseq2" / "pak1_manifest.txt"
-
-MAX_NAME = 56
 
 
 def main():
@@ -28,23 +25,12 @@ def main():
     if not files:
         sys.exit(f"no assets under {SRC}")
 
-    entries = []
-    data = bytearray(12)            # header placeholder
-    for p in files:
-        name = p.relative_to(SRC).as_posix().lower()
-        raw = p.read_bytes()
-        if len(name) >= MAX_NAME:
-            sys.exit(f"path too long for pak ({len(name)} >= {MAX_NAME}): {name}")
-        entries.append((name, len(data), len(raw)))
-        data += raw
-
-    dirofs = len(data)
-    for name, fpos, flen in entries:
-        data += struct.pack("<56sii", name.encode("latin-1"), fpos, flen)
-    struct.pack_into("<4sii", data, 0, b"PACK", dirofs, len(entries) * 64)
-
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_bytes(data)
+    try:
+        entries = write_pak(OUT, ((p.relative_to(SRC).as_posix().lower(),
+                                   p.read_bytes()) for p in files))
+    except ValueError as e:
+        sys.exit(str(e))
     MANIFEST.write_text(
         "# assets added by this port, packed into pak1.pak\n"
         + "\n".join(f"{flen:>9}  {name}" for name, _f, flen in entries) + "\n")

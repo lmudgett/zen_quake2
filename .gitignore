@@ -18,3 +18,6 @@ ctf/*.pak
 
 # Misc
 *.log
+
+# Python tooling
+tools/__pycache__/

@@ -15,14 +15,12 @@
 # Author: Len Mudgett
 
 import math
-import re
 import struct
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+from q2gen import ROOT, hash01, nearest_anorm
+
 OUT_DIR = ROOT / "baseq2" / "models" / "weapons" / "v_flamer"
 PICS_DIR = ROOT / "baseq2" / "pics"
-ANORMS_H = ROOT / "quake2" / "ref_gl" / "anorms.h"
 
 SKIN_NAME = b"models/weapons/v_flamer/skin.tga"
 SKIN_W, SKIN_H = 64, 64
@@ -39,19 +37,6 @@ def vnorm(a):
     l = math.sqrt(vdot(a, a)) or 1.0
     return (a[0]/l, a[1]/l, a[2]/l)
 def sepow(u, e): return math.copysign(abs(u) ** e, u)
-
-def load_anorms():
-    norms = []
-    for m in re.finditer(r"\{\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\}",
-                         ANORMS_H.read_text()):
-        norms.append(tuple(float(g) for g in m.groups()))
-    assert len(norms) == 162
-    return norms
-
-ANORMS = load_anorms()
-
-def nearest_anorm(n):
-    return max(range(162), key=lambda i: vdot(n, ANORMS[i]))
 
 # ---------------------------------------------------------------- geometry
 #
@@ -233,11 +218,6 @@ def build_md2():
     return header + skins + st + tris + frames + glcmds
 
 # ---------------------------------------------------------------- skin
-
-def hash01(x, y, salt=0):
-    h = (x * 374761393 + y * 668265263 + salt * 2246822519) & 0xFFFFFFFF
-    h = (h ^ (h >> 13)) * 1274126177 & 0xFFFFFFFF
-    return ((h ^ (h >> 16)) & 0xFFFF) / 65536.0
 
 def build_skin_tga():
     header = struct.pack("<BBB5B4H2B", 0, 0, 2, 0,0,0,0,0, 0, 0, SKIN_W, SKIN_H, 24, 0)
