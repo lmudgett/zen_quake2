@@ -44,11 +44,17 @@ static void check_dodge (edict_t *self, vec3_t start, vec3_t dir, int speed)
 	}
 	VectorMA (start, 8192, dir, end);
 	tr = gi.trace (start, NULL, NULL, end, self, MASK_SHOT);
-	if ((tr.ent) && (tr.ent->svflags & SVF_MONSTER) && (tr.ent->health > 0) && (tr.ent->monsterinfo.dodge) && infront(tr.ent, self))
+	if ((tr.ent) && (tr.ent->svflags & SVF_MONSTER) && (tr.ent->health > 0) && infront(tr.ent, self))
 	{
 		VectorSubtract (tr.endpos, start, v);
 		eta = (VectorLength(v) - tr.ent->maxs[0]) / speed;
-		tr.ent->monsterinfo.dodge (tr.ent, self, eta);
+		if (tr.ent->monsterinfo.dodge)
+			tr.ent->monsterinfo.dodge (tr.ent, self, eta);
+		else if (ai_enhanced->value && random () < 0.2f + 0.2f * skill->value)
+		{	// no duck animation: a quick lateral step off the firing line
+			M_walkmove (tr.ent,
+				tr.ent->s.angles[YAW] + ((rand () & 1) ? 90.0f : -90.0f), 20.0f);
+		}
 	}
 }
 
@@ -502,6 +508,51 @@ static void Grenade_Touch (edict_t *ent, edict_t *other, cplane_t *plane, csurfa
 	Grenade_Explode (ent);
 }
 
+/*
+=================
+Grenade_Beware
+
+Fuse-time poll: monsters that can see a live grenade cooking near them
+flee the blast area (panic sprint aimed away from it). Explodes the
+grenade when the stored fuse (ent->timestamp) lapses.
+=================
+*/
+static void Grenade_Beware (edict_t *ent)
+{
+	edict_t	*e = NULL;
+
+	if (level.time >= ent->timestamp)
+	{
+		Grenade_Explode (ent);
+		return;
+	}
+
+	while ((e = findradius (e, ent->s.origin, 200)) != NULL)
+	{
+		vec3_t	away;
+
+		if (!(e->svflags & SVF_MONSTER) || e->health <= 0)
+			continue;
+		if (e->monsterinfo.aiflags &
+				(AI_GOOD_GUY | AI_BURNING_PANIC | AI_STAND_GROUND))
+			continue;
+		if (!visible (e, ent))
+			continue;
+		e->monsterinfo.aiflags |= AI_BURNING_PANIC;
+		e->burnfinished = ent->timestamp + 0.4f;	// until just past the bang
+		if (e->burnfinished < level.time + 0.6f)
+			e->burnfinished = level.time + 0.6f;
+		VectorSubtract (e->s.origin, ent->s.origin, away);
+		e->ideal_yaw = vectoyaw (away);
+		if (e->monsterinfo.run)
+			e->monsterinfo.run (e);
+	}
+
+	ent->nextthink = level.time + 0.4;
+	if (ent->nextthink > ent->timestamp)
+		ent->nextthink = ent->timestamp;
+}
+
 void fire_grenade (edict_t *self, vec3_t start, vec3_t aimdir, int damage, int speed, float timer, float damage_radius)
 {
 	edict_t	*grenade;
@@ -526,8 +577,17 @@ void fire_grenade (edict_t *self, vec3_t start, vec3_t aimdir, int damage, int s
 	grenade->s.modelindex = gi.modelindex ("models/objects/grenade/tris.md2");
 	grenade->owner = self;
 	grenade->touch = Grenade_Touch;
-	grenade->nextthink = level.time + timer;
-	grenade->think = Grenade_Explode;
+	if (ai_enhanced->value && timer > 0.6f)
+	{	// poll the fuse so nearby monsters can flee the blast
+		grenade->timestamp = level.time + timer;
+		grenade->nextthink = level.time + 0.4;
+		grenade->think = Grenade_Beware;
+	}
+	else
+	{	// short fuse (cooked): explode exactly on time
+		grenade->nextthink = level.time + timer;
+		grenade->think = Grenade_Explode;
+	}
 	grenade->dmg = damage;
 	grenade->dmg_radius = damage_radius;
 	grenade->classname = "grenade";
@@ -559,8 +619,17 @@ void fire_grenade2 (edict_t *self, vec3_t start, vec3_t aimdir, int damage, int 
 	grenade->s.modelindex = gi.modelindex ("models/objects/grenade2/tris.md2");
 	grenade->owner = self;
 	grenade->touch = Grenade_Touch;
-	grenade->nextthink = level.time + timer;
-	grenade->think = Grenade_Explode;
+	if (ai_enhanced->value && timer > 0.6f)
+	{	// poll the fuse so nearby monsters can flee the blast
+		grenade->timestamp = level.time + timer;
+		grenade->nextthink = level.time + 0.4;
+		grenade->think = Grenade_Beware;
+	}
+	else
+	{	// short fuse (cooked): explode exactly on time
+		grenade->nextthink = level.time + timer;
+		grenade->think = Grenade_Explode;
+	}
 	grenade->dmg = damage;
 	grenade->dmg_radius = damage_radius;
 	grenade->classname = "hgrenade";

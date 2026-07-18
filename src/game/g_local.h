@@ -142,6 +142,8 @@ typedef enum
 #define AI_RESURRECTING			0x00004000
 #define AI_BURNING_PANIC		0x00008000	// on fire: blind flailing sprint
 #define AI_SEARCHING			0x00010000	// lost the trail: hunting around
+#define AI_FALLBACK				0x00020000	// badly wounded: brief retreat
+#define AI_FALLBACK_DONE		0x00040000	// one retreat per life
 
 //monster attack state
 #define AS_STRAIGHT				1
@@ -448,6 +450,8 @@ typedef struct
 
 	int			power_armor_type;
 	int			power_armor_power;
+
+	float		fallback_time;	// wounded retreat ends (AI_FALLBACK)
 } monsterinfo_t;
 
 

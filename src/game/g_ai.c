@@ -1028,12 +1028,53 @@ void ai_run (edict_t *self, float dist)
 
 	if (enemy_vis)
 	{
-//		if (self.aiflags & AI_LOST_SIGHT)
-//			dprint("regained sight\n");
-		M_MoveToGoal (self, dist);
 		self->monsterinfo.aiflags &= ~(AI_LOST_SIGHT | AI_SEARCHING);
 		VectorCopy (self->enemy->s.origin, self->monsterinfo.last_sighting);
 		self->monsterinfo.trail_time = level.time;
+
+		// badly wounded: break off and put ground between us for a couple
+		// of seconds (set once per life in M_ReactToDamage)
+		if (self->monsterinfo.aiflags & AI_FALLBACK)
+		{
+			if (level.time > self->monsterinfo.fallback_time)
+				self->monsterinfo.aiflags &= ~AI_FALLBACK;
+			else
+			{
+				VectorSubtract (self->s.origin, self->enemy->s.origin, v);
+				self->ideal_yaw = vectoyaw (v)
+					+ ((self->s.number & 1) ? 25.0f : -25.0f);
+				M_ChangeYaw (self);
+				if (M_walkmove (self, self->s.angles[YAW],
+						dist ? dist * 1.2f : 6.0f))
+					return;
+				self->monsterinfo.aiflags &= ~AI_FALLBACK;	// cornered: fight
+			}
+		}
+
+		// pack flanking: at range each monster approaches along its own
+		// stable side bias, so a group spreads and closes from different
+		// directions instead of forming single file down the middle
+		if (ai_enhanced->value)
+		{
+			float	d, bias;
+
+			VectorSubtract (self->enemy->s.origin, self->s.origin, v);
+			d = VectorLength (v);
+			if (d > 160)
+			{
+				bias = (d - 160.0f) / 400.0f;
+				if (bias > 1.0f)
+					bias = 1.0f;
+				bias *= (self->s.number & 1) ? 40.0f : -40.0f;
+				self->ideal_yaw = vectoyaw (v) + bias;
+				M_ChangeYaw (self);
+				if (M_walkmove (self, self->s.angles[YAW], dist))
+					return;
+				// flank step blocked: use the pathing walk below
+			}
+		}
+
+		M_MoveToGoal (self, dist);
 		return;
 	}
 

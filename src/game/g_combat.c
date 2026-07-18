@@ -375,6 +375,17 @@ static int CheckArmor (edict_t *ent, vec3_t point, vec3_t normal, int damage, in
 
 void M_ReactToDamage (edict_t *targ, edict_t *attacker)
 {
+	// crossing into badly-wounded triggers a one-time tactical retreat
+	// (played out in ai_run while the enemy is visible)
+	if (ai_enhanced->value && targ->health > 0 && targ->max_health > 0
+		&& targ->health < targ->max_health / 4
+		&& !(targ->monsterinfo.aiflags & (AI_FALLBACK_DONE | AI_STAND_GROUND
+			| AI_GOOD_GUY | AI_BURNING_PANIC)))
+	{
+		targ->monsterinfo.aiflags |= AI_FALLBACK | AI_FALLBACK_DONE;
+		targ->monsterinfo.fallback_time = level.time + 2.0f + random ();
+	}
+
 	if (!(attacker->client) && !(attacker->svflags & SVF_MONSTER))
 		return;
 
