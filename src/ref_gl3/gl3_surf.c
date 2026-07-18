@@ -23,8 +23,8 @@ static cplane_t	frustum[4];
 static vec3_t	modelorg;			// viewer origin, for node facing tests
 
 // PVS cluster tracking; -2 forces a re-mark on the first frame of a map
-static int		r_viewcluster = -1, r_viewcluster2 = -1;
-static int		r_oldviewcluster = -2, r_oldviewcluster2 = -2;
+static int		r_viewcluster = -1, r_viewcluster2 = -1, r_viewcluster3 = -1;
+static int		r_oldviewcluster = -2, r_oldviewcluster2 = -2, r_oldviewcluster3 = -2;
 
 // ------------------------------------------------------------------ lightmaps
 
@@ -686,13 +686,47 @@ void GL3_MarkLeaves (void)
 			r_viewcluster2 = leaf->cluster;
 	}
 
+	// third cluster: bridge the opaque-water vis split along the view
+	// direction. Stock maps are vised with water opaque, so the far side
+	// of a water surface is never in the PVS: from above, pool interiors
+	// render black behind the translucent surface; from deep below, the
+	// room above does the same. Walk the view ray to the first sample on
+	// the other side of the water boundary and merge its PVS too.
+	r_viewcluster3 = -1;
+	if (r_worldmodel->vis)
+	{
+		vec3_t		fwd, probe;
+		mleaf_t		*pl;
+		qboolean	inwater;
+		int			j;
+
+		pl = GL3_Mod_PointInLeaf (r_newrefdef.vieworg, r_worldmodel);
+		inwater = (pl->contents & MASK_WATER) != 0;
+		AngleVectors (r_newrefdef.viewangles, fwd, NULL, NULL);
+		for (j = 1; j <= 16; j++)
+		{
+			VectorMA (r_newrefdef.vieworg, j * 64.0f, fwd, probe);
+			pl = GL3_Mod_PointInLeaf (probe, r_worldmodel);
+			if ((pl->contents & CONTENTS_SOLID) || pl->cluster == -1)
+				continue;		// wall clip or void: keep probing
+			if (((pl->contents & MASK_WATER) != 0) != inwater)
+			{
+				if (pl->cluster != r_viewcluster && pl->cluster != r_viewcluster2)
+					r_viewcluster3 = pl->cluster;
+				break;
+			}
+		}
+	}
+
 	if (r_oldviewcluster == r_viewcluster && r_oldviewcluster2 == r_viewcluster2
+		&& r_oldviewcluster3 == r_viewcluster3
 		&& !r_novis->value && r_viewcluster != -1)
 		return;					// same PVS as last frame
 
 	r_visframecount++;
 	r_oldviewcluster = r_viewcluster;
 	r_oldviewcluster2 = r_viewcluster2;
+	r_oldviewcluster3 = r_viewcluster3;
 
 	if (r_novis->value || r_viewcluster == -1 || !r_worldmodel->vis)
 	{
@@ -706,15 +740,25 @@ void GL3_MarkLeaves (void)
 
 	vis = GL3_Mod_ClusterPVS (r_viewcluster, r_worldmodel);
 
-	// may need to combine two clusters because of solid water boundaries
-	if (r_viewcluster2 != r_viewcluster)
+	// may need to combine clusters because of solid water boundaries
+	if (r_viewcluster2 != r_viewcluster || r_viewcluster3 != -1)
 	{
+		int	extra[2] = { r_viewcluster2, r_viewcluster3 };
+		int	e;
+
 		memcpy (fatvis, vis, (r_worldmodel->numleafs + 7) / 8);
-		vis = GL3_Mod_ClusterPVS (r_viewcluster2, r_worldmodel);
-		c = (r_worldmodel->numleafs + 31) / 32;
-		for (i = 0; i < c; i++)
-			((int *)fatvis)[i] |= ((int *)vis)[i];
 		vis = fatvis;
+		c = (r_worldmodel->numleafs + 31) / 32;
+		for (e = 0; e < 2; e++)
+		{
+			byte	*v2;
+
+			if (extra[e] == -1 || extra[e] == r_viewcluster)
+				continue;
+			v2 = GL3_Mod_ClusterPVS (extra[e], r_worldmodel);
+			for (i = 0; i < c; i++)
+				((int *)fatvis)[i] |= ((int *)v2)[i];
+		}
 	}
 
 	for (i = 0, leaf = r_worldmodel->leafs; i < r_worldmodel->numleafs; i++, leaf++)
