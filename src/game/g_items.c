@@ -836,6 +836,11 @@ static void drop_temp_touch (edict_t *ent, edict_t *other, cplane_t *plane, csur
 static void drop_make_touchable (edict_t *ent)
 {
 	ent->touch = Touch_Item;
+	// the drop toss can false-ground mid-air (e.g. on the dying monster's
+	// still-solid corpse, or clipped at spawn) and toss physics never
+	// re-checks a grounded entity -- drop the link once so a floater
+	// falls to the real floor; a genuinely landed item just re-grounds
+	ent->groundentity = NULL;
 	if (deathmatch->value)
 	{
 		ent->nextthink = level.time + 29;
