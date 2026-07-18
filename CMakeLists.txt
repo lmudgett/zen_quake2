@@ -209,7 +209,7 @@ function(q2_game_module NAME SRCDIR OUTDIR)
     target_include_directories(${NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(${NAME} PRIVATE q2_common_flags)
     set_target_properties(${NAME} PROPERTIES
-        OUTPUT_NAME "game_x86_64"
+        OUTPUT_NAME "game"
         PREFIX ""
         LIBRARY_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}/${OUTDIR}>"
         RUNTIME_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}/${OUTDIR}>")

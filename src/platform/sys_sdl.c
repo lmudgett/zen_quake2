@@ -267,11 +267,11 @@ GAME DLL
 static SDL_SharedObject	*game_library;
 
 #ifdef _WIN32
-static const char *gamename = "game_x86_64.dll";
+static const char *gamename = "game.dll";
 #elif defined(__APPLE__)
-static const char *gamename = "game_x86_64.dylib";
+static const char *gamename = "game.dylib";
 #else
-static const char *gamename = "game_x86_64.so";
+static const char *gamename = "game.so";
 #endif
 
 void Sys_UnloadGame (void)

@@ -90,8 +90,8 @@ This builds five targets:
 | `quake2`   | `build/quake2.exe`         | Client (GUI subsystem on Windows)  |
 | `q2ded`    | `build/q2ded.exe`          | Dedicated server                   |
 | `ref_gl3`  | `build/ref_gl3.dll`        | Renderer (loaded via `GetRefAPI`)  |
-| `game`     | `build/baseq2/game_x86_64.dll` | baseq2 game logic (`GetGameAPI`) |
-| `ctf`      | `build/ctf/game_x86_64.dll`    | CTF game logic                   |
+| `game`     | `build/baseq2/game.dll`    | baseq2 game logic (`GetGameAPI`)   |
+| `ctf`      | `build/ctf/game.dll`       | CTF game logic                     |
 
 > Adding a **new** `.c` file requires re-running the configure step
 > (`cmake -S . -B build`) — the source lists use a glob that CMake caches.
