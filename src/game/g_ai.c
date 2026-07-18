@@ -123,6 +123,82 @@ static qboolean ai_burning_panic (edict_t *self, float dist)
 
 /*
 =============
+ai_move_searching
+
+The AI_SEARCHING wander: poke around the area until search_time runs
+out, then settle back to idling.  Shared by ai_run (pursuit trail went
+cold) and ai_stand/ai_walk (idle monster alarmed by a corpse).  Returns
+true when it consumed the frame.
+=============
+*/
+static qboolean ai_move_searching (edict_t *self, float dist)
+{
+	if (!(self->monsterinfo.aiflags & AI_SEARCHING))
+		return false;
+	if (level.time > self->monsterinfo.search_time)
+	{	// give up and go back to idling; FindTarget re-acquires
+		self->monsterinfo.aiflags &= ~(AI_SEARCHING | AI_LOST_SIGHT);
+		self->enemy = self->oldenemy = NULL;
+		self->monsterinfo.pausetime = level.time + 100000000;
+		self->monsterinfo.stand (self);
+		return true;
+	}
+	if (!self->enemy && FindTarget (self))
+		return true;
+	if (random () < 0.15f)
+		self->ideal_yaw = random () * 360;
+	M_ChangeYaw (self);
+	M_walkmove (self, self->s.angles[YAW], dist ? dist : 5);
+	return true;
+}
+
+/*
+=============
+ai_check_corpses
+
+An idle monster that spots a freshly killed ally goes on alert and
+hunts the area (the AI_SEARCHING wander).  Each corpse only alarms
+the first witness.
+=============
+*/
+static void ai_check_corpses (edict_t *self)
+{
+	edict_t	*corpse = NULL;
+	vec3_t	v;
+
+	if (!ai_enhanced->value || self->enemy)
+		return;
+	if (self->monsterinfo.aiflags &
+			(AI_GOOD_GUY | AI_COMBAT_POINT | AI_STAND_GROUND | AI_SEARCHING))
+		return;
+	if (self->spawnflags & 1)
+		return;			// ambushers hold their post
+	if ((level.framenum + self->s.number) % 10)
+		return;			// scan once a second, staggered per monster
+
+	while ((corpse = findradius (corpse, self->s.origin, 320)) != NULL)
+	{
+		if (!(corpse->svflags & SVF_DEADMONSTER))
+			continue;
+		if (corpse->death_time <= 0
+			|| level.time - corpse->death_time > 30)
+			continue;	// stale news, or somebody already raised the alarm
+		if (!visible (self, corpse) || !infront (self, corpse))
+			continue;
+
+		corpse->death_time = -1;
+		VectorSubtract (corpse->s.origin, self->s.origin, v);
+		self->ideal_yaw = vectoyaw (v);
+		self->monsterinfo.aiflags |= AI_SEARCHING;
+		self->monsterinfo.search_time = level.time + 8;
+		if (self->monsterinfo.walk)
+			self->monsterinfo.walk (self);
+		return;
+	}
+}
+
+/*
+=============
 ai_stand
 
 Used for standing around and looking for players
@@ -135,6 +211,9 @@ void ai_stand (edict_t *self, float dist)
 
 	if (ai_burning_panic (self, dist))
 		return;
+	if (ai_move_searching (self, dist))
+		return;
+	ai_check_corpses (self);
 
 	if (dist)
 		M_walkmove (self, self->s.angles[YAW], dist);
@@ -193,6 +272,9 @@ void ai_walk (edict_t *self, float dist)
 {
 	if (ai_burning_panic (self, dist))
 		return;
+	if (ai_move_searching (self, dist))
+		return;
+	ai_check_corpses (self);
 
 	M_MoveToGoal (self, dist);
 
@@ -1090,6 +1172,25 @@ void ai_run (edict_t *self, float dist)
 		VectorCopy (self->enemy->s.origin, self->monsterinfo.last_sighting);
 		self->monsterinfo.trail_time = level.time;
 
+		// kiting: a pure-ranged monster doesn't let the player close to
+		// point-blank -- it takes a quick back-step to reopen the gap
+		// (borrows the fallback mover below without spending the
+		// once-per-life wounded retreat, which is gated on FALLBACK_DONE)
+		if (ai_enhanced->value && self->monsterinfo.attack
+			&& !self->monsterinfo.melee
+			&& !(self->monsterinfo.aiflags & (AI_FALLBACK | AI_FEARLESS))
+			&& random () < 0.08f)
+		{
+			VectorSubtract (self->enemy->s.origin, self->s.origin, v);
+			if (VectorLength (v) < 130)
+			{
+				self->monsterinfo.aiflags |= AI_FALLBACK;
+				self->monsterinfo.fallback_time = level.time + 0.7f;
+				self->monsterinfo.fallback_yaw =
+					anglemod (vectoyaw (v) + 180.0f + crandom () * 30.0f);
+			}
+		}
+
 		// badly wounded: break off and put ground between us for a couple
 		// of seconds (set once per life in M_ReactToDamage)
 		if (self->monsterinfo.aiflags & AI_FALLBACK)
@@ -1136,22 +1237,8 @@ void ai_run (edict_t *self, float dist)
 
 	// hunting: the trail went cold, so poke around the area instead of
 	// standing at the last sighting; sight regain above ends the hunt
-	if (self->monsterinfo.aiflags & AI_SEARCHING)
-	{
-		if (level.time > self->monsterinfo.search_time)
-		{	// give up and go back to idling; FindTarget re-acquires
-			self->monsterinfo.aiflags &= ~(AI_SEARCHING | AI_LOST_SIGHT);
-			self->enemy = self->oldenemy = NULL;
-			self->monsterinfo.pausetime = level.time + 100000000;
-			self->monsterinfo.stand (self);
-			return;
-		}
-		if (random () < 0.15f)
-			self->ideal_yaw = random () * 360;
-		M_ChangeYaw (self);
-		M_walkmove (self, self->s.angles[YAW], dist ? dist : 5);
+	if (ai_move_searching (self, dist))
 		return;
-	}
 
 	// coop will change to another enemy if visible
 	if (coop->value)

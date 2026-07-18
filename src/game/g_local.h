@@ -1057,6 +1057,10 @@ struct edict_s
 	float		burn_tick;		// next damage tick
 	edict_t		*burn_attacker;	// who lit it (kill credit)
 
+	float		death_time;		// monsters: level.time of death; an idle
+								// ally that sees a fresh corpse goes
+								// hunting.  -1 once the alarm is raised
+
 	float		angle;			// set in qe3, -1 = up, -2 = down
 	char		*target;
 	char		*targetname;

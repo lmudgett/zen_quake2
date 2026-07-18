@@ -184,6 +184,7 @@ void Killed (edict_t *targ, edict_t *inflictor, edict_t *attacker, int damage, v
 	if ((targ->svflags & SVF_MONSTER) && (targ->deadflag != DEAD_DEAD))
 	{
 		targ->touch = NULL;
+		targ->death_time = level.time;	// idle allies notice fresh corpses
 		monster_death_use (targ);
 
 		// a pool of blood spreads under the corpse (client-side decal
