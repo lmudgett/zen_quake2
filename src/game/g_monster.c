@@ -48,8 +48,40 @@ void monster_fire_shotgun (edict_t *self, vec3_t start, vec3_t aimdir, int damag
 	gi.multicast (start, MULTICAST_PVS);
 }
 
+/*
+=================
+G_LeadTarget
+
+Shift an aim direction so a projectile leads a moving enemy by its
+flight time -- preserving whatever deliberate spread or aim error the
+caller built into dir (the shift is applied to the aim POINT, not the
+aim itself). Skill-scaled: easy keeps id's fire-at-where-you-were.
+=================
+*/
+static void G_LeadTarget (edict_t *self, vec3_t start, vec3_t dir, int speed)
+{
+	vec3_t	end, v;
+	float	d, scale;
+
+	if (!ai_enhanced->value || skill->value < 1 || speed <= 0)
+		return;
+	if (!self->enemy || !self->enemy->inuse || self->enemy->health <= 0)
+		return;
+	if (!visible (self, self->enemy))
+		return;
+
+	VectorSubtract (self->enemy->s.origin, start, v);
+	d = VectorLength (v);
+	scale = (skill->value >= 2) ? 1.0f : 0.6f;
+	VectorMA (start, d, dir, end);
+	VectorMA (end, scale * d / (float)speed, self->enemy->velocity, end);
+	VectorSubtract (end, start, dir);
+	VectorNormalize (dir);
+}
+
 void monster_fire_blaster (edict_t *self, vec3_t start, vec3_t dir, int damage, int speed, int flashtype, int effect)
 {
+	G_LeadTarget (self, start, dir, speed);
 	fire_blaster (self, start, dir, damage, speed, effect, false);
 
 	gi.WriteByte (svc_muzzleflash2);
@@ -70,6 +102,7 @@ void monster_fire_grenade (edict_t *self, vec3_t start, vec3_t aimdir, int damag
 
 void monster_fire_rocket (edict_t *self, vec3_t start, vec3_t dir, int damage, int speed, int flashtype)
 {
+	G_LeadTarget (self, start, dir, speed);
 	fire_rocket (self, start, dir, damage, speed, damage+20, damage);
 
 	gi.WriteByte (svc_muzzleflash2);

@@ -106,6 +106,42 @@ static qboolean MonsterIsMachine (edict_t *ent)
 
 /*
 ============
+G_ScareNearby
+
+Watching an ally burn to death or burst apart is bad for morale: nearby
+monsters that see it happen break off into a brief panic sprint (the
+same movement the fire panic uses; burnfinished doubles as the timer).
+============
+*/
+static void G_ScareNearby (edict_t *victim)
+{
+	edict_t	*e = NULL;
+
+	if (!ai_enhanced->value)
+		return;
+	while ((e = findradius (e, victim->s.origin, 300)) != NULL)
+	{
+		if (e == victim || !(e->svflags & SVF_MONSTER) || e->health <= 0)
+			continue;
+		if (e->monsterinfo.aiflags &
+				(AI_GOOD_GUY | AI_BURNING_PANIC | AI_STAND_GROUND | AI_COMBAT_POINT))
+			continue;
+		if (e->s.effects & EF_BURNING)
+			continue;			// already has bigger problems
+		if (!visible (e, victim))
+			continue;
+		if (random () < 0.4f)
+			continue;			// the steely ones hold
+		e->monsterinfo.aiflags |= AI_BURNING_PANIC;
+		e->burnfinished = level.time + 1.0f + random () * 1.5f;
+		e->ideal_yaw = random () * 360;
+		if (e->monsterinfo.run)
+			e->monsterinfo.run (e);
+	}
+}
+
+/*
+============
 Killed
 ============
 */
@@ -138,6 +174,11 @@ void Killed (edict_t *targ, edict_t *inflictor, edict_t *attacker, int damage, v
 
 	if (targ->s.effects & EF_BURNING)
 		targ->s.renderfx |= RF_CHARRED;	// died on fire: blackened remains
+
+	// a gruesome death (burned alive or blown apart) rattles the witnesses
+	if ((targ->svflags & SVF_MONSTER)
+		&& ((targ->s.effects & EF_BURNING) || targ->health <= targ->gib_health))
+		G_ScareNearby (targ);
 
 	if ((targ->svflags & SVF_MONSTER) && (targ->deadflag != DEAD_DEAD))
 	{

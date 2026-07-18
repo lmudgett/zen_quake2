@@ -141,6 +141,7 @@ typedef enum
 #define AI_MEDIC				0x00002000
 #define AI_RESURRECTING			0x00004000
 #define AI_BURNING_PANIC		0x00008000	// on fire: blind flailing sprint
+#define AI_SEARCHING			0x00010000	// lost the trail: hunting around
 
 //monster attack state
 #define AS_STRAIGHT				1
@@ -526,6 +527,7 @@ extern	cvar_t	*timelimit;
 extern	cvar_t	*password;
 extern	cvar_t	*spectator_password;
 extern	cvar_t	*g_select_empty;
+extern	cvar_t	*ai_enhanced;
 extern	cvar_t	*dedicated;
 
 extern	cvar_t	*filterban;

@@ -189,6 +189,10 @@ void InitGame (void)
 
 	g_select_empty = gi.cvar ("g_select_empty", "0", CVAR_ARCHIVE);
 
+	// port: smarter monsters (alert shouts, search, aim leading, morale);
+	// 0 restores the stock id brain for comparison
+	ai_enhanced = gi.cvar ("ai_enhanced", "1", CVAR_ARCHIVE);
+
 	run_pitch = gi.cvar ("run_pitch", "0.002", 0);
 	run_roll = gi.cvar ("run_roll", "0.005", 0);
 	bob_up  = gi.cvar ("bob_up", "0.005", 0);

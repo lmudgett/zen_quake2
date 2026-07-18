@@ -109,6 +109,13 @@ static qboolean ai_burning_panic (edict_t *self, float dist)
 {
 	if (!(self->monsterinfo.aiflags & AI_BURNING_PANIC))
 		return false;
+	if (!(self->s.effects & EF_BURNING) && level.time > self->burnfinished)
+	{	// fear passes (a real fire's panic is cleared by G_RunBurn)
+		self->monsterinfo.aiflags &= ~AI_BURNING_PANIC;
+		return false;
+	}
+	if (random () < 0.08f)
+		self->ideal_yaw = random () * 360;
 	M_ChangeYaw (self);
 	M_walkmove (self, self->s.angles[YAW], dist ? dist * 1.4f : 6.0f);
 	return true;
@@ -372,6 +379,35 @@ void HuntTarget (edict_t *self)
 		AttackFinished (self, 1);
 }
 
+/*
+=============
+G_AlertNearby
+
+A monster that spots a player shouts: enemy-less monsters in earshot
+(radius + PHS) aggro too, and each one's own FoundTarget re-shouts, so
+the alert chains through a whole group. Ambush-flagged monsters keep
+waiting, exactly as they ignore sounds.
+=============
+*/
+static void G_AlertNearby (edict_t *self)
+{
+	edict_t	*e = NULL;
+
+	while ((e = findradius (e, self->s.origin, 700)) != NULL)
+	{
+		if (e == self || !(e->svflags & SVF_MONSTER) || e->health <= 0)
+			continue;
+		if (e->enemy || (e->monsterinfo.aiflags & (AI_GOOD_GUY | AI_COMBAT_POINT)))
+			continue;
+		if (e->spawnflags & 1)		// ambush: waits for its own sighting
+			continue;
+		if (!gi.inPHS (self->s.origin, e->s.origin))
+			continue;
+		e->enemy = self->enemy;
+		FoundTarget (e);
+	}
+}
+
 void FoundTarget (edict_t *self)
 {
 	// let other monsters see this monster for a while
@@ -380,6 +416,9 @@ void FoundTarget (edict_t *self)
 		level.sight_entity = self;
 		level.sight_entity_framenum = level.framenum;
 		level.sight_entity->light_level = 128;
+
+		if (ai_enhanced->value)
+			G_AlertNearby (self);	// shout: the whole group wakes
 	}
 
 	self->show_hostile = level.time + 1;		// wake up other monsters
@@ -992,9 +1031,28 @@ void ai_run (edict_t *self, float dist)
 //		if (self.aiflags & AI_LOST_SIGHT)
 //			dprint("regained sight\n");
 		M_MoveToGoal (self, dist);
-		self->monsterinfo.aiflags &= ~AI_LOST_SIGHT;
+		self->monsterinfo.aiflags &= ~(AI_LOST_SIGHT | AI_SEARCHING);
 		VectorCopy (self->enemy->s.origin, self->monsterinfo.last_sighting);
 		self->monsterinfo.trail_time = level.time;
+		return;
+	}
+
+	// hunting: the trail went cold, so poke around the area instead of
+	// standing at the last sighting; sight regain above ends the hunt
+	if (self->monsterinfo.aiflags & AI_SEARCHING)
+	{
+		if (level.time > self->monsterinfo.search_time)
+		{	// give up and go back to idling; FindTarget re-acquires
+			self->monsterinfo.aiflags &= ~(AI_SEARCHING | AI_LOST_SIGHT);
+			self->enemy = self->oldenemy = NULL;
+			self->monsterinfo.pausetime = level.time + 100000000;
+			self->monsterinfo.stand (self);
+			return;
+		}
+		if (random () < 0.15f)
+			self->ideal_yaw = random () * 360;
+		M_ChangeYaw (self);
+		M_walkmove (self, self->s.angles[YAW], dist ? dist : 5);
 		return;
 	}
 
@@ -1007,6 +1065,12 @@ void ai_run (edict_t *self, float dist)
 
 	if ((self->monsterinfo.search_time) && (level.time > (self->monsterinfo.search_time + 20)))
 	{
+		if (ai_enhanced->value)
+		{	// pursuit took too long: switch to hunting on the spot
+			self->monsterinfo.aiflags |= AI_SEARCHING;
+			self->monsterinfo.search_time = level.time + 7;
+			return;
+		}
 		M_MoveToGoal (self, dist);
 		self->monsterinfo.search_time = 0;
 //		dprint("search timeout\n");
@@ -1052,6 +1116,13 @@ void ai_run (edict_t *self, float dist)
 		else
 		{
 			marker = PlayerTrail_PickNext (self);
+		}
+
+		if (!marker && ai_enhanced->value
+			&& !(self->monsterinfo.aiflags & AI_PURSUE_TEMP))
+		{	// breadcrumb trail ran dry right here: hunt the area
+			self->monsterinfo.aiflags |= AI_SEARCHING;
+			self->monsterinfo.search_time = level.time + 7;
 		}
 
 		if (marker)

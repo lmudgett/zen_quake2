@@ -1012,5 +1012,10 @@ void fire_flame (edict_t *self, vec3_t start, vec3_t dir, int damage, int speed)
 		flame->dmg = damage;
 		flame->classname = "flame";
 		gi.linkentity (flame);
+
+		// duck-capable monsters get a chance to react to the stream
+		// (throttled: three tongues per frame would spam the dodge)
+		if (self->client && i == 0)
+			check_dodge (self, flame->s.origin, fdir, (int)(speed * 0.9f));
 	}
 }
