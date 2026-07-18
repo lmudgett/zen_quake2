@@ -308,6 +308,7 @@ void GL3_InitSky (void);
 void GL3_ShutdownSky (void);
 void GL3_SetSky (char *name, float rotate, vec3_t axis);
 void GL3_DrawSkyBox (const float *viewproj, const float *vieworg);
+qboolean GL3_SkyVisible (void);		// gl3_surf.c: sky brush in view this frame
 
 extern float	gl3_viewproj[16];		// projection * view for the current frame
 

@@ -265,17 +265,23 @@ static void GL3_RenderFrame (refdef_t *fd)
 	{
 		GL3_MarkLeaves ();
 		GL3_PushDlights ();
-		GL3_DrawSkyBox (gl3_viewproj, r_newrefdef.vieworg);	// background, before the world
 		if (r_voxelize->value)
 		{
 			// voxel mode: rebuild the world (and, opt-in, entities) as cubes.
 			// water/dlights/particles/translucent are intentionally skipped.
 			GL3_DrawWorldVoxels (gl3_viewproj);
+			if (GL3_SkyVisible ())
+				GL3_DrawSkyBox (gl3_viewproj, r_newrefdef.vieworg);
 			GL3_DrawEntities ();
 		}
 		else
 		{
 			GL3_DrawWorld ();
+			// sky after the world, depth-tested: it must only fill pixels
+			// no geometry claimed, and only when real sky brushes are in
+			// view -- id semantics (see GL3_SkyVisible)
+			if (GL3_SkyVisible ())
+				GL3_DrawSkyBox (gl3_viewproj, r_newrefdef.vieworg);
 			GL3_DrawDecals (gl3_viewproj);		// impact marks, on the walls
 			GL3_DrawWater (gl3_viewproj, r_newrefdef.time);
 			GL3_DrawEntities ();

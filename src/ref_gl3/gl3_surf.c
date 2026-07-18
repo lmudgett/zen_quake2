@@ -746,6 +746,8 @@ on those of their surfaces that face the viewer. The draw passes render
 only surfaces with the current drawframe.
 =================
 */
+static qboolean	r_sky_visible;	// a SURF_DRAWSKY surface was stamped this frame
+
 static void R_RecursiveWorldNode (mnode_t *node)
 {
 	int			c, side, sidebit;
@@ -803,9 +805,22 @@ static void R_RecursiveWorldNode (mnode_t *node)
 		if ((surf->flags & SURF_PLANEBACK) != sidebit)
 			continue;			// facing away
 		surf->drawframe = r_framecount;
+		if (surf->flags & SURF_DRAWSKY)
+			r_sky_visible = true;
 	}
 
 	R_RecursiveWorldNode (node->children[!side]);
+}
+
+// true when this frame's world walk stamped at least one sky surface.
+// The skybox must only be painted where real sky brushes are on screen:
+// maps are vised with opaque water, so e.g. submerged views legitimately
+// exclude the room above -- an unconditional sky backdrop would bleed
+// through the translucent water surface there (visible as "skybox
+// instead of ceiling" when underwater)
+qboolean GL3_SkyVisible (void)
+{
+	return r_sky_visible;
 }
 
 // voxel mode reuses the world's PVS + frustum + facing cull: stamp
@@ -815,6 +830,7 @@ void GL3_MarkVisibleSurfaces (void)
 	if (!r_worldmodel)
 		return;
 	VectorCopy (r_newrefdef.vieworg, modelorg);
+	r_sky_visible = false;
 	R_RecursiveWorldNode (r_worldmodel->nodes);
 }
 
@@ -901,6 +917,7 @@ void GL3_DrawWorld (void)
 	// walk the BSP: stamps drawframe on PVS-visible, frustum-passing,
 	// front-facing surfaces for all of this frame's world passes
 	VectorCopy (r_newrefdef.vieworg, modelorg);
+	r_sky_visible = false;
 	R_RecursiveWorldNode (r_worldmodel->nodes);
 
 	glUniform1f (gl3_prog3d.u_alpha, 1.0f);

@@ -1,6 +1,9 @@
 // gl3_sky.c -- skybox rendering. Drawn as a full 6-face cube centered on the
-// viewer, behind the world (sky brush surfaces aren't drawn, so the box shows
-// through them). Uses the 3D world shader with the lightmap disabled.
+// viewer AFTER the opaque world, depth-forced to the far plane so it only
+// fills pixels no geometry claimed (sky brush surfaces aren't rasterized, so
+// the box shows through them). The caller gates the draw on GL3_SkyVisible so
+// out-of-PVS regions (e.g. above an opaque-vised water surface) stay dark
+// instead of bleeding skybox. Uses the 3D world shader, lightmap disabled.
 
 #include "gl3_local.h"
 
@@ -111,7 +114,10 @@ void GL3_SetSky (char *name, float rotate, vec3_t axis)
 	}
 }
 
-// draw the full skybox around the viewer (called before the world, no depth)
+// draw the full skybox around the viewer (after the opaque world: fragments
+// are forced to the far plane, so world geometry already drawn wins the
+// depth test regardless of the box's modest 2300u radius -- id's
+// gldepthmax trick)
 void GL3_DrawSkyBox (const float *viewproj, const float *vieworg)
 {
 	int		i;
@@ -126,7 +132,7 @@ void GL3_DrawSkyBox (const float *viewproj, const float *vieworg)
 	glUniform1f (gl3_prog3d.u_gamma, vid_gamma->value < 0.5f ? 0.5f : vid_gamma->value);
 	glUniform1f (gl3_prog3d.u_intensity, 1.0f);
 
-	glDisable (GL_DEPTH_TEST);
+	glDepthRange (1.0, 1.0);
 	glDepthMask (GL_FALSE);
 	glDisable (GL_BLEND);
 	glActiveTexture (GL_TEXTURE0);
@@ -149,5 +155,5 @@ void GL3_DrawSkyBox (const float *viewproj, const float *vieworg)
 	}
 
 	glDepthMask (GL_TRUE);
-	glEnable (GL_DEPTH_TEST);
+	glDepthRange (0.0, 1.0);
 }
