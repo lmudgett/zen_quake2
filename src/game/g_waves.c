@@ -232,6 +232,9 @@ static void WaveSpawnNemesis (edict_t *player)
 	m->max_health = m->health;
 	m->s.effects |= EF_COLOR_SHELL;
 	m->s.renderfx |= RF_SHELL_RED;		// menacing red glow
+	// a boss knows no fear: never retreats, never panics at gore or
+	// grenades, and is exempt from the pack volley ration
+	m->monsterinfo.aiflags |= AI_FEARLESS;
 
 	wave.nemesis = m;
 

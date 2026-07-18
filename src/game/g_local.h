@@ -144,6 +144,8 @@ typedef enum
 #define AI_SEARCHING			0x00010000	// lost the trail: hunting around
 #define AI_FALLBACK				0x00020000	// badly wounded: brief retreat
 #define AI_FALLBACK_DONE		0x00040000	// one retreat per life
+#define AI_FEARLESS				0x00080000	// bosses: no fear, no retreat,
+											// exempt from the volley ration
 
 //monster attack state
 #define AS_STRAIGHT				1
@@ -343,6 +345,12 @@ typedef struct
 	int			body_que;			// dead bodies
 
 	int			power_cubes;		// ugly necessity for coop
+
+	// pack volley stagger (ai_enhanced): ranged-attack starts are
+	// rationed per short window so groups pour fire instead of alpha
+	// striking in one synchronized burst
+	float		volley_time;
+	int			volley_count;
 } level_locals_t;
 
 
@@ -452,6 +460,7 @@ typedef struct
 	int			power_armor_power;
 
 	float		fallback_time;	// wounded retreat ends (AI_FALLBACK)
+	float		fallback_yaw;	// retreat heading (picked toward cover)
 } monsterinfo_t;
 
 
@@ -719,6 +728,7 @@ void M_CheckGround (edict_t *ent);
 // g_misc.c
 //
 char *MonsterHeadModel (edict_t *self);
+float G_PickCoverYaw (edict_t *self, edict_t *threat);
 void ThrowHead (edict_t *self, char *gibname, int damage, int type);
 void ThrowClientHead (edict_t *self, int damage);
 void ThrowGib (edict_t *self, char *gibname, int damage, int type);

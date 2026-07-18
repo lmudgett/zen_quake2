@@ -381,6 +381,49 @@ void HuntTarget (edict_t *self)
 
 /*
 =============
+G_PickCoverYaw
+
+Choose a retreat heading for a wounded monster: sample lanes fanning
+back from the threat and take the first whose endpoint breaks the
+threat's line of sight -- an actual dash for cover. Falls back to
+straight away when nothing nearby blocks vision.
+=============
+*/
+float G_PickCoverYaw (edict_t *self, edict_t *threat)
+{
+	static const float	offsets[5] = { 0, 45, -45, 90, -90 };
+	vec3_t	v;
+	float	away;
+	int		k;
+
+	VectorSubtract (self->s.origin, threat->s.origin, v);
+	away = vectoyaw (v);
+
+	for (k = 0; k < 5; k++)
+	{
+		vec3_t	angles, dir, spot, eye;
+		trace_t	tr;
+
+		VectorSet (angles, 0, away + offsets[k], 0);
+		AngleVectors (angles, dir, NULL, NULL);
+		VectorMA (self->s.origin, 192, dir, spot);
+		tr = gi.trace (self->s.origin, self->mins, self->maxs, spot,
+			self, MASK_MONSTERSOLID);
+		if (tr.fraction < 0.4f)
+			continue;			// runs straight into a wall: useless lane
+		VectorCopy (tr.endpos, spot);
+		spot[2] += 16;
+		VectorCopy (threat->s.origin, eye);
+		eye[2] += threat->viewheight;
+		tr = gi.trace (spot, vec3_origin, vec3_origin, eye, self, MASK_OPAQUE);
+		if (tr.fraction < 1.0f)
+			return away + offsets[k];	// endpoint is out of the threat's sight
+	}
+	return away;
+}
+
+/*
+=============
 G_AlertNearby
 
 A monster that spots a player shouts: enemy-less monsters in earshot
@@ -743,6 +786,21 @@ qboolean M_CheckAttack (edict_t *self)
 
 	if (random () < chance)
 	{
+		// pack volley stagger: only a couple of monsters may open ranged
+		// fire in any window, so a group pours sustained fire instead of
+		// one synchronized alpha strike (bosses are exempt)
+		if (ai_enhanced->value
+			&& !(self->monsterinfo.aiflags & AI_FEARLESS))
+		{
+			if (level.time >= level.volley_time)
+			{
+				level.volley_time = level.time + 0.3f;
+				level.volley_count = 0;
+			}
+			if (level.volley_count >= 2)
+				return false;		// hold fire a beat
+			level.volley_count++;
+		}
 		self->monsterinfo.attack_state = AS_MISSILE;
 		self->monsterinfo.attack_finished = level.time + 2*random();
 		return true;
@@ -1040,9 +1098,7 @@ void ai_run (edict_t *self, float dist)
 				self->monsterinfo.aiflags &= ~AI_FALLBACK;
 			else
 			{
-				VectorSubtract (self->s.origin, self->enemy->s.origin, v);
-				self->ideal_yaw = vectoyaw (v)
-					+ ((self->s.number & 1) ? 25.0f : -25.0f);
+				self->ideal_yaw = self->monsterinfo.fallback_yaw;
 				M_ChangeYaw (self);
 				if (M_walkmove (self, self->s.angles[YAW],
 						dist ? dist * 1.2f : 6.0f))

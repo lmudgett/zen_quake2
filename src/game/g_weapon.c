@@ -534,7 +534,7 @@ static void Grenade_Beware (edict_t *ent)
 		if (!(e->svflags & SVF_MONSTER) || e->health <= 0)
 			continue;
 		if (e->monsterinfo.aiflags &
-				(AI_GOOD_GUY | AI_BURNING_PANIC | AI_STAND_GROUND))
+				(AI_GOOD_GUY | AI_BURNING_PANIC | AI_STAND_GROUND | AI_FEARLESS))
 			continue;
 		if (!visible (e, ent))
 			continue;

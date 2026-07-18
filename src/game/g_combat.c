@@ -124,7 +124,8 @@ static void G_ScareNearby (edict_t *victim)
 		if (e == victim || !(e->svflags & SVF_MONSTER) || e->health <= 0)
 			continue;
 		if (e->monsterinfo.aiflags &
-				(AI_GOOD_GUY | AI_BURNING_PANIC | AI_STAND_GROUND | AI_COMBAT_POINT))
+				(AI_GOOD_GUY | AI_BURNING_PANIC | AI_STAND_GROUND
+				| AI_COMBAT_POINT | AI_FEARLESS))
 			continue;
 		if (e->s.effects & EF_BURNING)
 			continue;			// already has bigger problems
@@ -380,10 +381,11 @@ void M_ReactToDamage (edict_t *targ, edict_t *attacker)
 	if (ai_enhanced->value && targ->health > 0 && targ->max_health > 0
 		&& targ->health < targ->max_health / 4
 		&& !(targ->monsterinfo.aiflags & (AI_FALLBACK_DONE | AI_STAND_GROUND
-			| AI_GOOD_GUY | AI_BURNING_PANIC)))
+			| AI_GOOD_GUY | AI_BURNING_PANIC | AI_FEARLESS)))
 	{
 		targ->monsterinfo.aiflags |= AI_FALLBACK | AI_FALLBACK_DONE;
 		targ->monsterinfo.fallback_time = level.time + 2.0f + random ();
+		targ->monsterinfo.fallback_yaw = G_PickCoverYaw (targ, attacker);
 	}
 
 	if (!(attacker->client) && !(attacker->svflags & SVF_MONSTER))
@@ -694,7 +696,7 @@ void Ignite (edict_t *targ, edict_t *attacker)
 	targ->burn_attacker = attacker;
 
 	if ((targ->svflags & SVF_MONSTER) && targ->health > 0
-		&& !(targ->monsterinfo.aiflags & AI_BURNING_PANIC))
+		&& !(targ->monsterinfo.aiflags & (AI_BURNING_PANIC | AI_FEARLESS)))
 	{
 		targ->monsterinfo.aiflags |= AI_BURNING_PANIC;
 		targ->ideal_yaw = random () * 360;
