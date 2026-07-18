@@ -132,6 +132,45 @@ void gib_die (edict_t *self, edict_t *inflictor, edict_t *attacker, int damage, 
 	G_FreeEdict (self);
 }
 
+/*
+=================
+head_settle
+
+Trophy heads come to rest in a RANDOM pose -- tipped, spun, or flopped
+fully onto their sides (the gory base cap keeps an exposed neck solid).
+This is a think poll, NOT a touch callback: the physics fires touches
+BEFORE it sets groundentity and never again after, so a touch-time pose
+is silently skipped at final rest (which is also why id's gib_touch
+alignment rarely fires -- and when it does, it poses every gib the same).
+=================
+*/
+static void head_settle (edict_t *self)
+{
+	float	pitch, roll;
+
+	if (!self->groundentity && level.time < self->timestamp + 4)
+	{	// still tumbling
+		self->nextthink = level.time + FRAMETIME;
+		return;
+	}
+
+	VectorClear (self->avelocity);
+	pitch = crandom () * 35;
+	roll = crandom () * 70;		// through side-lying
+	self->s.angles[PITCH] = pitch;
+	self->s.angles[YAW] = random () * 360;
+	self->s.angles[ROLL] = roll;
+	// the model pivots about its base-centered origin: a small roll-only
+	// lift keeps a side-lying skull out of the floor without leaving
+	// lightly-tilted heads hovering
+	self->s.origin[2] += fabsf (roll) * (2.5f / 70.0f);
+	gi.sound (self, CHAN_VOICE, gi.soundindex ("misc/fhit3.wav"), 1, ATTN_NORM, 0);
+	self->think = NULL;
+	gi.linkentity (self);
+}
+
+#define MAX_TROPHY_HEADS	64	// permanent severed heads kept per level
+
 void ThrowGib (edict_t *self, char *gibname, int damage, int type)
 {
 	edict_t *gib;
@@ -309,11 +348,9 @@ void ThrowHead (edict_t *self, char *gibname, int damage, int type)
 		self->velocity[2] = 90.0f + random () * 80.0f;
 	}
 
-	// randomized resting orientation: tipped and rolled a little, plus
-	// flight spin that freezes at an arbitrary yaw on landing -- kept
-	// shy of a full flop so the open neck cut stays against the floor
-	self->s.angles[PITCH] = crandom () * 30;
-	self->s.angles[ROLL] = crandom () * 30;
+	// spin in flight; head_settle rolls the random resting pose once the
+	// physics grounds the head (touch callbacks can't do this -- see there)
+	self->touch = NULL;
 	self->avelocity[YAW] = crandom()*600;
 
 	// Quake-1 trophy heads: they stay on the floor for good (the other
@@ -321,8 +358,8 @@ void ThrowHead (edict_t *self, char *gibname, int damage, int type)
 	// edict pool -- past the cap the oldest head makes way.
 	self->classname = "head_gib";
 	self->timestamp = level.time;
-	self->think = NULL;
-	self->nextthink = 0;
+	self->think = head_settle;			// poses the head once it grounds,
+	self->nextthink = level.time + FRAMETIME;	// then thinks never again
 	{
 		edict_t	*e = NULL, *oldest = NULL;
 		int		nheads = 0;
@@ -335,7 +372,7 @@ void ThrowHead (edict_t *self, char *gibname, int damage, int type)
 			if (!oldest || e->timestamp < oldest->timestamp)
 				oldest = e;
 		}
-		if (nheads >= 64 && oldest)
+		if (nheads >= MAX_TROPHY_HEADS && oldest)
 			G_FreeEdict (oldest);
 	}
 

@@ -946,6 +946,10 @@ flickers. Tongues splash out on whatever they touch: direct damage plus
 ignition -- the real killer is the burn (g_combat.c Ignite/G_RunBurn).
 =================
 */
+#define FLAME_TONGUES		3		// projectiles per trigger frame
+#define FLAME_SPREAD		0.10f	// cone half-width (fraction of forward)
+#define FLAME_LIFE			0.8f	// flight seconds: ~350u = mid range
+#define FLAME_SCORCH_CHANCE	0.25f	// wall-char rate limit
 static void flame_touch (edict_t *self, edict_t *other, cplane_t *plane, csurface_t *surf)
 {
 	if (other == self->owner)
@@ -965,7 +969,7 @@ static void flame_touch (edict_t *self, edict_t *other, cplane_t *plane, csurfac
 			DAMAGE_ENERGY | DAMAGE_NO_KNOCKBACK, MOD_FLAMER);
 		Ignite (other, self->owner);
 	}
-	else if (plane && random () < 0.25f)
+	else if (plane && random () < FLAME_SCORCH_CHANCE)
 	{	// hosing a wall chars it -- rate-limited so a sustained burst
 		// doesn't churn the whole transient decal ring
 		G_SurfaceScuff (self->s.origin, plane->normal);
@@ -982,11 +986,11 @@ void fire_flame (edict_t *self, vec3_t start, vec3_t dir, int damage, int speed)
 	vectoangles (dir, angles);
 	AngleVectors (angles, NULL, right, up);
 
-	for (i = 0; i < 3; i++)
+	for (i = 0; i < FLAME_TONGUES; i++)
 	{
 		flame = G_Spawn ();
-		VectorMA (dir, crandom () * 0.10f, right, fdir);
-		VectorMA (fdir, crandom () * 0.08f, up, fdir);
+		VectorMA (dir, crandom () * FLAME_SPREAD, right, fdir);
+		VectorMA (fdir, crandom () * FLAME_SPREAD * 0.8f, up, fdir);
 		VectorNormalize (fdir);
 
 		VectorCopy (start, flame->s.origin);
@@ -1004,7 +1008,7 @@ void fire_flame (edict_t *self, vec3_t start, vec3_t dir, int damage, int speed)
 		flame->owner = self;
 		flame->touch = flame_touch;
 		flame->think = G_FreeEdict;
-		flame->nextthink = level.time + 0.8;	// mid range: dies in flight
+		flame->nextthink = level.time + FLAME_LIFE;	// dies in flight
 		flame->dmg = damage;
 		flame->classname = "flame";
 		gi.linkentity (flame);

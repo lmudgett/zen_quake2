@@ -352,10 +352,12 @@ void gunner_die (edict_t *self, edict_t *inflictor, edict_t *attacker, int damag
 	if (self->deadflag == DEAD_DEAD)
 		return;
 
-// regular death
+// regular death -- the gunner's one death anim leaves the corpse without
+// a head, so gibbing it later must not drop one
 	gi.sound (self, CHAN_VOICE, sound_death, 1, ATTN_NORM, 0);
 	self->deadflag = DEAD_DEAD;
 	self->takedamage = DAMAGE_YES;
+	self->headless = true;
 	self->monsterinfo.currentmove = &gunner_move_death;
 }
 

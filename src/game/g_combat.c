@@ -616,6 +616,10 @@ void T_RadiusDamage (edict_t *inflictor, edict_t *attacker, float damage, edict_
 }
 
 
+#define BURN_TIME	5.0f	// seconds a victim stays on fire
+#define BURN_TICK	0.5f	// damage cadence while burning
+#define BURN_DAMAGE	5		// per tick
+
 /*
 ============
 Ignite
@@ -634,7 +638,7 @@ void Ignite (edict_t *targ, edict_t *attacker)
 		return;			// crates, doors etc don't catch fire
 
 	targ->s.effects |= EF_BURNING;
-	targ->burnfinished = level.time + 5;
+	targ->burnfinished = level.time + BURN_TIME;
 	targ->burn_attacker = attacker;
 
 	if ((targ->svflags & SVF_MONSTER) && targ->health > 0
@@ -652,9 +656,9 @@ void Ignite (edict_t *targ, edict_t *attacker)
 G_RunBurn
 
 Per-frame burn upkeep, called for every entity from G_RunFrame. Ticks
-damage twice a second, rerolls the panic direction, and puts the fire
-out when the timer lapses. Corpses keep burning (and can crisp all the
-way into gibs); flame projectiles carry EF_BURNING too but are not
+damage on the living, rerolls the panic direction, and puts the fire
+out when the timer lapses. Corpses burn visually only (the charred body
+is the trophy); flame projectiles carry EF_BURNING too but are not
 monsters/clients, so they pass straight through here.
 ============
 */
@@ -675,7 +679,7 @@ void G_RunBurn (edict_t *ent)
 	}
 	if (level.time < ent->burn_tick)
 		return;
-	ent->burn_tick = level.time + 0.5;
+	ent->burn_tick = level.time + BURN_TICK;
 
 	if (ent->health <= 0)
 		return;			// corpses burn visually but don't cook into gibs
@@ -685,7 +689,7 @@ void G_RunBurn (edict_t *ent)
 	if (!attacker || !attacker->inuse)
 		attacker = world;
 	T_Damage (ent, world, attacker, vec3_origin, ent->s.origin, vec3_origin,
-		5, 0, DAMAGE_ENERGY | DAMAGE_NO_KNOCKBACK, MOD_FLAMER);
+		BURN_DAMAGE, 0, DAMAGE_ENERGY | DAMAGE_NO_KNOCKBACK, MOD_FLAMER);
 	if (ent->inuse && ent->health > 0)
 		ent->ideal_yaw = random () * 360;	// flail a new way
 }
