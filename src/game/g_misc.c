@@ -179,6 +179,12 @@ void ThrowGib (edict_t *self, char *gibname, int damage, int type)
 	vec3_t	size;
 	float	vscale;
 
+	// headless corpses keep skull-like shapes out of their gib piles:
+	// the bone gib's dark marrow cavity reads as a severed head at a
+	// glance, exactly what the headless rule promises won't appear
+	if (self->headless && strstr (gibname, "gibs/bone"))
+		gibname = "models/objects/gibs/sm_meat/tris.md2";
+
 	gib = G_Spawn();
 
 	VectorScale (self->size, 0.5, size);
