@@ -103,7 +103,8 @@ typedef enum
 	AMMO_ROCKETS,
 	AMMO_GRENADES,
 	AMMO_CELLS,
-	AMMO_SLUGS
+	AMMO_SLUGS,
+	AMMO_FUEL		// flamethrower
 } ammo_t;
 
 
@@ -139,6 +140,7 @@ typedef enum
 #define AI_COMBAT_POINT			0x00001000
 #define AI_MEDIC				0x00002000
 #define AI_RESURRECTING			0x00004000
+#define AI_BURNING_PANIC		0x00008000	// on fire: blind flailing sprint
 
 //monster attack state
 #define AS_STRAIGHT				1
@@ -498,6 +500,7 @@ extern	int	body_armor_index;
 #define MOD_TRIGGER_HURT	31
 #define MOD_HIT				32
 #define MOD_TARGET_BLASTER	33
+#define MOD_FLAMER			34
 #define MOD_FRIENDLY_FIRE	0x8000000
 
 extern	int	meansOfDeath;
@@ -665,6 +668,8 @@ qboolean OnSameTeam (edict_t *ent1, edict_t *ent2);
 qboolean CanDamage (edict_t *targ, edict_t *inflictor);
 void T_Damage (edict_t *targ, edict_t *inflictor, edict_t *attacker, vec3_t dir, vec3_t point, vec3_t normal, int damage, int knockback, int dflags, int mod);
 void T_RadiusDamage (edict_t *inflictor, edict_t *attacker, float damage, edict_t *ignore, float radius, int mod);
+void Ignite (edict_t *targ, edict_t *attacker);
+void G_RunBurn (edict_t *ent);
 
 // damage flags
 #define DAMAGE_RADIUS			0x00000001	// damage was indirect
@@ -707,6 +712,7 @@ void M_CheckGround (edict_t *ent);
 //
 // g_misc.c
 //
+char *MonsterHeadModel (edict_t *self);
 void ThrowHead (edict_t *self, char *gibname, int damage, int type);
 void ThrowClientHead (edict_t *self, int damage);
 void ThrowGib (edict_t *self, char *gibname, int damage, int type);
@@ -743,6 +749,7 @@ void fire_grenade2 (edict_t *self, vec3_t start, vec3_t aimdir, int damage, int 
 void fire_rocket (edict_t *self, vec3_t start, vec3_t dir, int damage, int speed, float damage_radius, int radius_damage);
 void fire_rail (edict_t *self, vec3_t start, vec3_t aimdir, int damage, int kick);
 void fire_bfg (edict_t *self, vec3_t start, vec3_t dir, int damage, int speed, float damage_radius);
+void fire_flame (edict_t *self, vec3_t start, vec3_t dir, int damage, int speed);
 
 //
 // g_ptrail.c
@@ -861,6 +868,7 @@ typedef struct
 	int			max_grenades;
 	int			max_cells;
 	int			max_slugs;
+	int			max_fuel;
 
 	gitem_t		*weapon;
 	gitem_t		*lastweapon;
@@ -1025,6 +1033,13 @@ struct edict_s
 	int			spawnflags;
 
 	float		timestamp;
+	qboolean	headless;		// death anim took the head off: gibbing
+								// this corpse must not drop a head gib
+
+	// on fire (flamethrower): damage-over-time + panic until it burns out
+	float		burnfinished;	// level.time the fire goes out
+	float		burn_tick;		// next damage tick
+	edict_t		*burn_attacker;	// who lit it (kill credit)
 
 	float		angle;			// set in qe3, -1 = up, -2 = down
 	char		*target;

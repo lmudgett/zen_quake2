@@ -18,8 +18,6 @@
 
 #include "gl3_local.h"
 
-#define MAX_DECALS		384
-#define DECAL_POOL		24576	// vertex ring shared by all decals
 #define MAX_FRAG_VERTS	32		// one clipped fragment's vertex cap
 #define DECAL_MAX_VERTS	480		// triangle-list verts one decal may take
 #define DECAL_FADE		4.0f	// fade-out tail, seconds
@@ -32,6 +30,8 @@ typedef struct
 {
 	vec3_t	pos;
 	float	st[2];
+	float	alpha;		// baked per-decal opacity (print fade steps) --
+						// lets thousands of persistent marks draw batched
 } dvert_t;
 
 typedef struct
@@ -40,23 +40,73 @@ typedef struct
 	int			first, count;	// triangle-list range in the pool
 	float		birth;			// r_newrefdef.time when stamped
 	int			type;			// DECAL_* (ref.h)
+	int			variant;		// texture pick for types with variants
 	vec3_t		mins, maxs;		// world bounds for frustum culling
 } decal_t;
 
+// blood never washes off: pools, splats and boot prints outlive
+// gl_decaltime. Each class rings through its OWN slot + vertex region, so
+// nothing can evict across classes: firefight splatter churn can't recycle
+// a death pool or a boot print -- only more of the same kind wrapping its
+// ring, or a map change, takes persistent blood out.
+//
+// Region sizes are the single tuning knob: everything else (table ranges,
+// totals) is derived, so one region can grow without touching the rest.
+// Sized so a whole level's worth of carnage fits without ever wrapping:
+// ~2000 kills of pools, ~8000 splats, ~2000 boot prints (VBO ~22MB).
+#define POOL_SLOTS		2048	// death pools: ~1 per kill, big
+#define POOL_VERTS		262144
+#define SPLAT_SLOTS		8192	// splatter: many per fight, small
+#define SPLAT_VERTS		524288
+#define PRINT_SLOTS		2048	// boot prints: 8 per soak, tiny
+#define PRINT_VERTS		131072
+#define TRANS_SLOTS		256		// transient impact marks (fade anyway)
+#define TRANS_VERTS		24576
+
+#define MAX_DECALS	(POOL_SLOTS + SPLAT_SLOTS + PRINT_SLOTS + TRANS_SLOTS)
+#define DECAL_POOL	(POOL_VERTS + SPLAT_VERTS + PRINT_VERTS + TRANS_VERTS)
+
+enum { REG_POOL, REG_SPLAT, REG_PRINT, REG_TRANS, NUM_REGIONS };
+
+typedef struct
+{
+	int	slot_lo, slot_hi;	// decal-slot range [lo, hi)
+	int	vert_lo, vert_hi;	// vertex-ring range [lo, hi)
+} dregdef_t;
+
+static const dregdef_t regdefs[NUM_REGIONS] = {
+	{ 0, POOL_SLOTS,
+	  0, POOL_VERTS },
+	{ POOL_SLOTS, POOL_SLOTS + SPLAT_SLOTS,
+	  POOL_VERTS, POOL_VERTS + SPLAT_VERTS },
+	{ POOL_SLOTS + SPLAT_SLOTS, MAX_DECALS - TRANS_SLOTS,
+	  POOL_VERTS + SPLAT_VERTS, DECAL_POOL - TRANS_VERTS },
+	{ MAX_DECALS - TRANS_SLOTS, MAX_DECALS,
+	  DECAL_POOL - TRANS_VERTS, DECAL_POOL },
+};
+static int	reg_slot[NUM_REGIONS];		// next slot per region
+static int	reg_vert[NUM_REGIONS];		// next free vert per region
+static int	reg_hislot[NUM_REGIONS];	// highest slot ever used + 1: every
+										// per-frame loop stops there instead
+										// of walking thousands of dead slots
+static int	reg_live[NUM_REGIONS];		// live decal count per region
+
 static decal_t	decals[MAX_DECALS];
-static int		decal_head;		// next slot to (re)use
-static int		pool_head;		// next free vert in the ring
 
 static GLuint	decal_vao, decal_vbo;
 static GLuint	decal_prog;
-static GLint	decal_u_mvp, decal_u_color;
+static GLint	decal_u_mvp, decal_u_color, decal_u_grow;
 
 #define HEAT_TIME	2.5f	// seconds a fresh energy burn stays hot
 static GLuint	heat_prog;
 static GLint	heat_u_mvp, heat_u_invscreen, heat_u_time, heat_u_heat;
 
-static image_t	*decal_images[5];
+#define POOL_VARIANTS	3
+static image_t	*decal_images[8];
+static image_t	*pool_images[POOL_VARIANTS];
 static int		decal_images_seq = -1;
+
+#define POOL_GROW_TIME	4.0f	// seconds a death pool takes to spread
 
 // scratch for the decal being built
 static dvert_t	build_verts[DECAL_MAX_VERTS];
@@ -67,21 +117,31 @@ static const char *decal_vs =
 	"#version 330 core\n"
 	"in vec3 a_pos;\n"
 	"in vec2 a_uv;\n"
+	"in float a_alpha;\n"
 	"uniform mat4 u_mvp;\n"
 	"out vec2 v_uv;\n"
+	"out float v_alpha;\n"
 	"void main() {\n"
 	"	gl_Position = u_mvp * vec4(a_pos, 1.0);\n"
 	"	v_uv = a_uv;\n"
+	"	v_alpha = a_alpha;\n"
 	"}\n";
 
+// u_grow rescales the decal-local ST about its center so a mark can spread
+// after being stamped (blood pools); the clamp keeps the shrunken sampling
+// window from wrapping into the GL_REPEAT neighbors (borders are transparent)
 static const char *decal_fs =
 	"#version 330 core\n"
 	"in vec2 v_uv;\n"
+	"in float v_alpha;\n"
 	"uniform sampler2D u_tex;\n"
 	"uniform vec4 u_color;\n"
+	"uniform float u_grow;\n"
 	"out vec4 frag;\n"
 	"void main() {\n"
-	"	frag = texture(u_tex, v_uv) * u_color;\n"
+	"	vec2 uv = clamp((v_uv - 0.5) / u_grow + 0.5, 0.0, 1.0);\n"
+	"	frag = texture(u_tex, uv) * u_color;\n"
+	"	frag.a *= v_alpha;\n"
 	"}\n";
 
 // heat-haze pass: a fresh energy burn shimmers -- the decal quad re-draws
@@ -112,6 +172,7 @@ void GL3_InitDecals (void)
 	decal_prog = GL3_CompileProgram (decal_vs, decal_fs);
 	decal_u_mvp = glGetUniformLocation (decal_prog, "u_mvp");
 	decal_u_color = glGetUniformLocation (decal_prog, "u_color");
+	decal_u_grow = glGetUniformLocation (decal_prog, "u_grow");
 	glUseProgram (decal_prog);
 	glUniform1i (glGetUniformLocation (decal_prog, "u_tex"), 0);
 	glUseProgram (0);
@@ -136,7 +197,12 @@ void GL3_InitDecals (void)
 	glEnableVertexAttribArray (1);
 	glVertexAttribPointer (1, 2, GL_FLOAT, GL_FALSE, sizeof(dvert_t),
 		(void *)offsetof(dvert_t, st));
+	glEnableVertexAttribArray (2);
+	glVertexAttribPointer (2, 1, GL_FLOAT, GL_FALSE, sizeof(dvert_t),
+		(void *)offsetof(dvert_t, alpha));
 	glBindVertexArray (0);
+
+	GL3_DecalsNewMap ();	// region cursors start valid before any map
 }
 
 void GL3_ShutdownDecals (void)
@@ -152,7 +218,13 @@ void GL3_ShutdownDecals (void)
 void GL3_DecalsNewMap (void)
 {
 	memset (decals, 0, sizeof(decals));
-	decal_head = pool_head = 0;
+	for (int i = 0; i < NUM_REGIONS; i++)
+	{
+		reg_slot[i] = regdefs[i].slot_lo;
+		reg_vert[i] = regdefs[i].vert_lo;
+		reg_hislot[i] = regdefs[i].slot_lo;
+		reg_live[i] = 0;
+	}
 }
 
 static image_t *DecalImage (int type)
@@ -164,11 +236,27 @@ static image_t *DecalImage (int type)
 		decal_images[DECAL_ENERGY] = GL3_FindImage ("textures/decals/energy.tga", it_sprite);
 		decal_images[DECAL_BFG] = decal_images[DECAL_SCORCH];	// green-tinted at draw
 		decal_images[DECAL_RAIL] = GL3_FindImage ("textures/decals/rail.tga", it_sprite);
+		decal_images[DECAL_BLOOD] = GL3_FindImage ("textures/decals/blood.tga", it_sprite);
+		pool_images[0] = GL3_FindImage ("textures/decals/pool.tga", it_sprite);
+		pool_images[1] = GL3_FindImage ("textures/decals/pool1.tga", it_sprite);
+		pool_images[2] = GL3_FindImage ("textures/decals/pool2.tga", it_sprite);
+		decal_images[DECAL_BLOOD_POOL] = pool_images[0];
+		decal_images[DECAL_FOOTPRINT] = GL3_FindImage ("textures/decals/footprint.tga", it_sprite);
 		decal_images_seq = registration_sequence;
 	}
-	if (type < 0 || type > DECAL_RAIL)
+	if (type < 0 || type > DECAL_FOOTPRINT)
 		type = DECAL_SCORCH;
 	return decal_images[type];
+}
+
+// pools come in a few silhouettes so repeated deaths don't stamp clones
+static image_t *PoolImage (int variant)
+{
+	image_t	*img = DecalImage (DECAL_BLOOD_POOL);	// ensures (re)resolve
+
+	if (pool_images[variant % POOL_VARIANTS])
+		img = pool_images[variant % POOL_VARIANTS];
+	return img;
 }
 
 /*
@@ -363,6 +451,77 @@ static void DecalNode (mnode_t *node, vec3_t origin, vec3_t dir, qboolean direct
 
 /*
 =================
+StampDecal
+
+Commit the fragments accumulated in build_verts as one decal: ring-allocate
+pool space (retiring whatever the range runs over) and upload.
+=================
+*/
+static void StampDecal (int type, float basealpha)
+{
+	const dregdef_t	*rd;
+	decal_t	*dc;
+	int		reg, need, *head, *slot;
+
+	// each decal class rings through its own slot + vertex region, so
+	// churn in one class never evicts another (splatter can't eat pools)
+	if (type == DECAL_BLOOD_POOL)		reg = REG_POOL;
+	else if (type == DECAL_BLOOD)		reg = REG_SPLAT;
+	else if (type == DECAL_FOOTPRINT)	reg = REG_PRINT;
+	else								reg = REG_TRANS;
+	rd = &regdefs[reg];
+	head = &reg_vert[reg];
+	slot = &reg_slot[reg];
+
+	// ring-allocate vertex space; retire whatever the range runs over.
+	// Regions own disjoint vertex ranges, so only this region's slots
+	// can overlap -- no need to scan the other 10k+.
+	need = build_count;
+	if (*head + need > rd->vert_hi)
+		*head = rd->vert_lo;
+	for (int i = rd->slot_lo; i < reg_hislot[reg]; i++)
+	{
+		if (decals[i].live && decals[i].first < *head + need
+			&& decals[i].first + decals[i].count > *head)
+		{
+			decals[i].live = false;
+			reg_live[reg]--;
+		}
+	}
+
+	dc = &decals[*slot];
+	*slot = *slot + 1;
+	if (*slot > reg_hislot[reg])
+		reg_hislot[reg] = *slot;
+	if (*slot >= rd->slot_hi)
+		*slot = rd->slot_lo;
+
+	// opacity rides in the vertices so persistent marks can draw batched
+	for (int i = 0; i < build_count; i++)
+		build_verts[i].alpha = basealpha;
+
+	if (dc->live)
+		reg_live[reg]--;	// slot ring wrapped onto a live decal
+	dc->live = true;
+	reg_live[reg]++;
+	dc->first = *head;
+	dc->count = build_count;
+	dc->birth = r_newrefdef.time;
+	dc->type = type;
+	dc->variant = rand () % POOL_VARIANTS;
+	VectorCopy (build_mins, dc->mins);
+	VectorCopy (build_maxs, dc->maxs);
+
+	glBindBuffer (GL_ARRAY_BUFFER, decal_vbo);
+	glBufferSubData (GL_ARRAY_BUFFER, *head * sizeof(dvert_t),
+		build_count * sizeof(dvert_t), build_verts);
+	glBindBuffer (GL_ARRAY_BUFFER, 0);
+
+	*head += need;
+}
+
+/*
+=================
 GL3_AddDecal
 
 Stamp an impact mark. dir = impact surface normal for bullets/blaster
@@ -372,11 +531,9 @@ client through refexport_t.
 */
 void GL3_AddDecal (vec3_t origin, vec3_t dir, float radius, int type)
 {
-	decal_t		*dc;
 	vec3_t		t1, t2, axis;
 	qboolean	directional;
 	float		rot;
-	int			need;
 
 	if (!gl_decals || !gl_decals->value || !r_worldmodel || radius <= 0)
 		return;
@@ -412,34 +569,98 @@ void GL3_AddDecal (vec3_t origin, vec3_t dir, float radius, int type)
 	if (build_count < 3)
 		return;		// hit nothing markable
 
-	// ring-allocate pool space; retire whatever the range runs over
-	need = build_count;
-	if (pool_head + need > DECAL_POOL)
-		pool_head = 0;
-	for (int i = 0; i < MAX_DECALS; i++)
+	StampDecal (type, 1.0f);
+}
+
+/*
+=================
+GL3_AddDecalOriented
+
+Stamp a mark with a chosen heading (boot prints): forward, projected onto
+the surface plane, becomes the texture's +V axis so the mark points the
+way the walker is facing. alpha scales opacity (prints fade step by step).
+=================
+*/
+void GL3_AddDecalOriented (vec3_t origin, vec3_t normal, vec3_t forward,
+	float radius, float alpha, int type)
+{
+	vec3_t	axis, t1, t2;
+	float	d;
+
+	if (!gl_decals || !gl_decals->value || !r_worldmodel || radius <= 0)
+		return;
+	if (r_newrefdef.rdflags & RDF_NOWORLDMODEL)
+		return;
+
+	VectorCopy (normal, axis);
+	if (VectorNormalize (axis) < 0.5f)
+		return;
+
+	// texture "up" = forward flattened onto the surface plane
+	d = DotProduct (forward, axis);
+	VectorMA (forward, -d, axis, t2);
+	if (VectorNormalize (t2) < 0.01f)
+		return;		// looking straight along the normal: no heading
+	CrossProduct (axis, t2, t1);
+
+	build_count = 0;
+	ClearBounds (build_mins, build_maxs);
+	DecalNode (r_worldmodel->nodes, origin, axis, true, t1, t2, radius, 0);
+
+	if (build_count < 3)
+		return;
+
+	StampDecal (type, alpha);
+}
+
+/*
+=================
+GL3_BloodPoolAt
+
+Is live blood lying on the floor at this point? Used by the client to
+soak boots that step through it. Death pools and splatter both count;
+splats standing on walls don't (bounds tall in z relative to their
+footprint), and neither do already-stamped boot prints -- walking your
+own trail shouldn't re-soak forever. 2D bounds check with a little
+slack, loose in z (the blood hugs a floor near the query point).
+
+origin == NULL asks only "is there ANY blood at all?" -- an O(1) count
+check the client uses to skip its per-frame floor trace on clean maps.
+=================
+*/
+qboolean GL3_BloodPoolAt (vec3_t origin)
+{
+	static const int	blood_regs[2] = { REG_POOL, REG_SPLAT };
+
+	if (!origin)
+		return reg_live[REG_POOL] + reg_live[REG_SPLAT] > 0;
+
+	for (int r = 0; r < 2; r++)
 	{
-		if (decals[i].live && decals[i].first < pool_head + need
-			&& decals[i].first + decals[i].count > pool_head)
-			decals[i].live = false;
+		const dregdef_t	*rd = &regdefs[blood_regs[r]];
+
+		for (int i = rd->slot_lo; i < reg_hislot[blood_regs[r]]; i++)
+		{
+			decal_t	*dc = &decals[i];
+			float	xext, yext, zext;
+
+			if (!dc->live)
+				continue;
+			xext = dc->maxs[0] - dc->mins[0];
+			yext = dc->maxs[1] - dc->mins[1];
+			zext = dc->maxs[2] - dc->mins[2];
+			if (zext > 0.5f * (xext > yext ? xext : yext))
+				continue;	// standing on a wall, not lying on the floor
+			if (origin[0] < dc->mins[0] - 2 || origin[0] > dc->maxs[0] + 2)
+				continue;
+			if (origin[1] < dc->mins[1] - 2 || origin[1] > dc->maxs[1] + 2)
+				continue;
+			if (origin[2] < dc->mins[2] - 24 || origin[2] > dc->maxs[2] + 24)
+				continue;
+			return true;
+		}
 	}
-
-	dc = &decals[decal_head];
-	decal_head = (decal_head + 1) % MAX_DECALS;
-
-	dc->live = true;
-	dc->first = pool_head;
-	dc->count = build_count;
-	dc->birth = r_newrefdef.time;
-	dc->type = type;
-	VectorCopy (build_mins, dc->mins);
-	VectorCopy (build_maxs, dc->maxs);
-
-	glBindBuffer (GL_ARRAY_BUFFER, decal_vbo);
-	glBufferSubData (GL_ARRAY_BUFFER, pool_head * sizeof(dvert_t),
-		build_count * sizeof(dvert_t), build_verts);
-	glBindBuffer (GL_ARRAY_BUFFER, 0);
-
-	pool_head += need;
+	return false;
 }
 
 /*
@@ -450,11 +671,88 @@ Right after the opaque world: depth-tested, no depth write, alpha-blended,
 pulled toward the eye with a polygon offset against z-fighting.
 =================
 */
+/*
+=================
+DrawPersistentRegion
+
+A level's worth of blood is thousands of little decals -- far too many
+for a draw call each. Persistent marks never fade and their opacity is
+baked into the vertices, so consecutive live decals sharing a texture
+draw as ONE glDrawArrays over their contiguous vertex range. Only a
+still-growing death pool (needs its own u_grow) breaks out of the batch.
+=================
+*/
+static void DrawPersistentRegion (int reg, float now, GLuint *lasttex)
+{
+	const dregdef_t	*rd = &regdefs[reg];
+	int		i, run_first = -1, run_count = 0;
+
+	for (i = rd->slot_lo; i < reg_hislot[reg]; i++)
+	{
+		decal_t	*dc = &decals[i];
+		image_t	*img;
+		qboolean	growing;
+
+		if (dc->live && now - dc->birth < -1.0f)
+		{
+			dc->live = false;		// server time restarted under us
+			reg_live[reg]--;
+		}
+		if (!dc->live)
+			continue;
+		if (GL3_CullBox (dc->mins, dc->maxs))
+		{	// off-screen: close the run -- with the blood behind the
+			// player this culls the whole region to zero draws
+			if (run_count)
+			{
+				glDrawArrays (GL_TRIANGLES, run_first, run_count);
+				run_count = 0;
+			}
+			continue;
+		}
+
+		if (dc->type == DECAL_BLOOD_POOL)
+			img = PoolImage (dc->variant);
+		else
+			img = DecalImage (dc->type);
+		if (!img)
+			continue;
+		growing = (dc->type == DECAL_BLOOD_POOL
+			&& now - dc->birth < POOL_GROW_TIME);
+
+		if (run_count && (growing || img->texnum != *lasttex
+			|| dc->first != run_first + run_count))
+		{
+			glDrawArrays (GL_TRIANGLES, run_first, run_count);
+			run_count = 0;
+		}
+		if (img->texnum != *lasttex)
+		{
+			GL3_Bind (img->texnum);
+			*lasttex = img->texnum;
+		}
+
+		if (growing)
+		{
+			glUniform1f (decal_u_grow,
+				0.35f + 0.65f * ((now - dc->birth) / POOL_GROW_TIME));
+			glDrawArrays (GL_TRIANGLES, dc->first, dc->count);
+			glUniform1f (decal_u_grow, 1.0f);
+			continue;
+		}
+		if (!run_count)
+			run_first = dc->first;
+		run_count += dc->count;
+	}
+	if (run_count)
+		glDrawArrays (GL_TRIANGLES, run_first, run_count);
+}
+
 void GL3_DrawDecals (const float *viewproj)
 {
 	float	life, now;
 	GLuint	lasttex = 0;
-	int		i, drawn = 0;
+	int		i;
 
 	if (!gl_decals || !gl_decals->value)
 		return;
@@ -474,7 +772,16 @@ void GL3_DrawDecals (const float *viewproj)
 	glPolygonOffset (-1.0f, -2.0f);
 	glActiveTexture (GL_TEXTURE0);
 
-	for (i = 0; i < MAX_DECALS; i++)
+	// persistent blood: batched, never fades, vertex alpha carries the
+	// print fade-steps
+	glUniform1f (decal_u_grow, 1.0f);
+	glUniform4f (decal_u_color, 1.0f, 1.0f, 1.0f, 1.0f);
+	DrawPersistentRegion (REG_POOL, now, &lasttex);
+	DrawPersistentRegion (REG_SPLAT, now, &lasttex);
+	DrawPersistentRegion (REG_PRINT, now, &lasttex);
+
+	// transient impact marks: few, individually faded and tinted
+	for (i = regdefs[REG_TRANS].slot_lo; i < reg_hislot[REG_TRANS]; i++)
 	{
 		decal_t	*dc = &decals[i];
 		float	age, alpha;
@@ -486,6 +793,7 @@ void GL3_DrawDecals (const float *viewproj)
 		if (age > life || age < -1.0f)	// -1: server time restarted under us
 		{
 			dc->live = false;
+			reg_live[REG_TRANS]--;
 			continue;
 		}
 		if (GL3_CullBox (dc->mins, dc->maxs))
@@ -503,6 +811,7 @@ void GL3_DrawDecals (const float *viewproj)
 			GL3_Bind (img->texnum);
 			lasttex = img->texnum;
 		}
+
 		if (dc->type == DECAL_BFG)
 			glUniform4f (decal_u_color, 0.45f, 1.0f, 0.55f, alpha);
 		else if (dc->type == DECAL_ENERGY && age < HEAT_TIME)
@@ -516,7 +825,6 @@ void GL3_DrawDecals (const float *viewproj)
 			glUniform4f (decal_u_color, 1.0f, 1.0f, 1.0f, alpha);
 
 		glDrawArrays (GL_TRIANGLES, dc->first, dc->count);
-		drawn++;
 	}
 
 	glDisable (GL_POLYGON_OFFSET_FILL);
@@ -545,7 +853,8 @@ void GL3_DrawDecalsHeat (const float *viewproj, GLuint scene_tex)
 
 	now = r_newrefdef.time;
 
-	for (i = 0; i < MAX_DECALS; i++)
+	// energy burns are transient decals: only that region can hold them
+	for (i = regdefs[REG_TRANS].slot_lo; i < reg_hislot[REG_TRANS]; i++)
 	{
 		decal_t	*dc = &decals[i];
 		float	age, heat;

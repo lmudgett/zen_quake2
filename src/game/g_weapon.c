@@ -452,6 +452,23 @@ static void Grenade_Explode (edict_t *ent)
 	G_FreeEdict (ent);
 }
 
+/*
+=================
+G_SurfaceScuff
+
+Small scorch mark where something hot touched a surface (client stamps
+the decal; no particles, no sound).
+=================
+*/
+static void G_SurfaceScuff (vec3_t origin, vec3_t normal)
+{
+	gi.WriteByte (svc_temp_entity);
+	gi.WriteByte (TE_GRENADE_BOUNCE);
+	gi.WritePosition (origin);
+	gi.WriteDir (normal);
+	gi.multicast (origin, MULTICAST_PVS);
+}
+
 static void Grenade_Touch (edict_t *ent, edict_t *other, cplane_t *plane, csurface_t *surf)
 {
 	if (other == ent->owner)
@@ -475,6 +492,8 @@ static void Grenade_Touch (edict_t *ent, edict_t *other, cplane_t *plane, csurfa
 		else
 		{
 			gi.sound (ent, CHAN_VOICE, gi.soundindex ("weapons/grenlb1b.wav"), 1, ATTN_NORM, 0);
+			if (plane)
+				G_SurfaceScuff (ent->s.origin, plane->normal);
 		}
 		return;
 	}
@@ -913,4 +932,81 @@ void fire_bfg (edict_t *self, vec3_t start, vec3_t dir, int damage, int speed, f
 		check_dodge (self, bfg->s.origin, dir, speed);
 
 	gi.linkentity (bfg);
+}
+
+
+/*
+=================
+fire_flame
+
+Flamethrower: every trigger frame sprays a few flame tongues fanned into
+a cone. Each tongue is a small invisible projectile wearing EF_BURNING
+(the client draws it as fire), with randomized speed so the cone's reach
+flickers. Tongues splash out on whatever they touch: direct damage plus
+ignition -- the real killer is the burn (g_combat.c Ignite/G_RunBurn).
+=================
+*/
+static void flame_touch (edict_t *self, edict_t *other, cplane_t *plane, csurface_t *surf)
+{
+	if (other == self->owner)
+		return;
+	if (surf && (surf->flags & SURF_SKY))
+	{
+		G_FreeEdict (self);
+		return;
+	}
+	if (other->takedamage)
+	{
+		vec3_t	dir;
+
+		VectorNormalize2 (self->velocity, dir);
+		T_Damage (other, self, self->owner, dir, self->s.origin,
+			plane ? plane->normal : vec3_origin, self->dmg, 2,
+			DAMAGE_ENERGY | DAMAGE_NO_KNOCKBACK, MOD_FLAMER);
+		Ignite (other, self->owner);
+	}
+	else if (plane && random () < 0.25f)
+	{	// hosing a wall chars it -- rate-limited so a sustained burst
+		// doesn't churn the whole transient decal ring
+		G_SurfaceScuff (self->s.origin, plane->normal);
+	}
+	G_FreeEdict (self);
+}
+
+void fire_flame (edict_t *self, vec3_t start, vec3_t dir, int damage, int speed)
+{
+	vec3_t	right, up, angles, fdir;
+	edict_t	*flame;
+	int		i;
+
+	vectoangles (dir, angles);
+	AngleVectors (angles, NULL, right, up);
+
+	for (i = 0; i < 3; i++)
+	{
+		flame = G_Spawn ();
+		VectorMA (dir, crandom () * 0.10f, right, fdir);
+		VectorMA (fdir, crandom () * 0.08f, up, fdir);
+		VectorNormalize (fdir);
+
+		VectorCopy (start, flame->s.origin);
+		VectorCopy (start, flame->s.old_origin);
+		// varied tongue speed makes the cone lick in and out
+		VectorScale (fdir, speed * (0.8f + random () * 0.4f), flame->velocity);
+		flame->movetype = MOVETYPE_FLYMISSILE;
+		flame->clipmask = MASK_SHOT;
+		flame->solid = SOLID_BBOX;
+		// zero-size like every stock projectile: a real box here turns the
+		// stream into cover that eats the enemy's return fire
+		VectorClear (flame->mins);
+		VectorClear (flame->maxs);
+		flame->s.effects = EF_BURNING;	// no model: the fire IS the look
+		flame->owner = self;
+		flame->touch = flame_touch;
+		flame->think = G_FreeEdict;
+		flame->nextthink = level.time + 0.8;	// mid range: dies in flight
+		flame->dmg = damage;
+		flame->classname = "flame";
+		gi.linkentity (flame);
+	}
 }

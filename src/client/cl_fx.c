@@ -26,6 +26,18 @@ void CL_ItemRespawnParticles (vec3_t org);
 
 static vec3_t avelocities [NUMVERTEXNORMALS];
 
+// shared random-rate table used by the fly/BFG orbit effects: one lazy
+// initializer instead of a copy at every user
+static void CL_InitAvelocities (void)
+{
+	int		i;
+
+	if (avelocities[0][0])
+		return;
+	for (i = 0; i < NUMVERTEXNORMALS * 3; i++)
+		avelocities[0][i] = (rand () & 255) * 0.01f;
+}
+
 extern	struct model_s	*cl_mod_smoke;
 extern	struct model_s	*cl_mod_flash;
 
@@ -235,6 +247,8 @@ void CL_RunDLights (void)
 CL_ParseMuzzleFlash
 ==============
 */
+static void CL_FlameParticle (vec3_t org, float spread, float zlo, float zhi);
+
 void CL_ParseMuzzleFlash (void)
 {
 	vec3_t		fv, rv;
@@ -274,6 +288,43 @@ void CL_ParseMuzzleFlash (void)
 
 	switch (weapon)
 	{
+	case MZ_FLAMER:
+	{	// flamethrower: an actual CONE of flame anchored at the muzzle,
+		// widening with distance -- the tongue projectiles carry it on
+		// from there. Fired every trigger frame, so it reads continuous.
+		vec3_t	start, up;
+		int		k;
+
+		dl->color[0] = 1; dl->color[1] = 0.55f; dl->color[2] = 0.12f;
+		AngleVectors (pl->current.angles, fv, rv, up);
+		if (i == cl.playernum + 1)
+		{	// local player: the server origin lags prediction -- anchor
+			// the cone to the rendered view instead
+			VectorCopy (cl.refdef.vieworg, start);
+			AngleVectors (cl.refdef.viewangles, fv, rv, up);
+			start[2] -= 6;
+		}
+		else
+		{
+			VectorCopy (pl->current.origin, start);
+			start[2] += 8;
+		}
+		VectorMA (start, 10, fv, start);
+		VectorMA (start, 7, rv, start);
+		for (k = 0; k < 44; k++)
+		{
+			// half the particles crowd the nozzle (t^2 bias), half fill
+			// the length -- the cone stays fat at the gun and feathers out
+			float	t = (k & 1) ? frand () : frand () * frand ();
+			vec3_t	org;
+
+			VectorMA (start, 8 + t * 85, fv, org);
+			VectorMA (org, crand () * (2 + t * 14), rv, org);
+			VectorMA (org, crand () * (2 + t * 10), up, org);
+			CL_FlameParticle (org, 1.5f + t * 3.0f, -2, 2);
+		}
+		break;
+	}
 	case MZ_BLASTER:
 		dl->color[0] = 1;dl->color[1] = 1;dl->color[2] = 0;
 		S_StartSound (NULL, i, CHAN_WEAPON, S_RegisterSound("weapons/blastf1a.wav"), volume, ATTN_NORM, 0);
@@ -1830,11 +1881,7 @@ void CL_FlyParticles (vec3_t origin, int count)
 	if (count > NUMVERTEXNORMALS)
 		count = NUMVERTEXNORMALS;
 
-	if (!avelocities[0][0])
-	{
-		for (i=0 ; i<NUMVERTEXNORMALS*3 ; i++)
-			avelocities[0][i] = (rand()&255) * 0.01;
-	}
+	CL_InitAvelocities ();
 
 
 	ltime = (float)cl.time / 1000.0;
@@ -1879,35 +1926,172 @@ void CL_FlyParticles (vec3_t origin, int count)
 	}
 }
 
+/*
+===============
+CL_AddFlies
+
+Unreal-style corpse flies: instead of id's black particle dots, a handful
+of tiny 2-frame winged sprites (sprites/s_fly.sp2) circle the body --
+each on its own wandering orbit with a fast buzz jitter and an alternating
+wingbeat frame. Drawn on the blended path so the wing texels keep their
+translucency (the alpha-test cutoff would eat them).
+===============
+*/
+extern struct model_s	*cl_mod_flies;
+
+static void CL_AddFlies (vec3_t origin, int count, int seed)
+{
+	int			i, nflies;
+	float		ltime = cl.time / 1000.0f;
+	float		sph = seed * 0.611f;	// per-corpse phase shift
+	entity_t	fly;
+
+	if (!cl_mod_flies)
+		return;
+
+	nflies = count / 12;		// id's 0..162 particle ramp -> 0..13 flies
+	if (nflies > 13)
+		nflies = 13;
+
+	CL_InitAvelocities ();
+
+	memset (&fly, 0, sizeof(fly));
+	fly.model = cl_mod_flies;
+	fly.flags = RF_TRANSLUCENT | RF_MINLIGHT;	// MINLIGHT: world-lit sprite
+	fly.alpha = 0.99f;	// just under 1: takes the blend path, so the
+						// translucent wing texels survive (the alpha-test
+						// cutoff at 0.666 would clip them)
+
+	for (i = 0; i < nflies; i++)
+	{
+		// seed picks a different rate-table row AND phase set per corpse:
+		// without it every swarm on the map is a synchronized clone
+		int		k  = ((i + seed * 5) * 7) % NUMVERTEXNORMALS;
+		float	s0 = avelocities[k][0], s1 = avelocities[k][1],
+				s2 = avelocities[k][2];		// per-fly random rates, 0..2.55
+
+		// heading wanders instead of circling: a base rotation plus two
+		// slow incommensurate sines makes every fly weave its own loops
+		// and figure-eights; the cubed term throws in sudden darts
+		float	az = ltime * (0.8f + 0.7f * s0) + k + sph
+			+ 2.6f * sinf (ltime * (0.37f + 0.21f * s1) + k + sph)
+			+ 1.9f * sinf (ltime * (0.53f + 0.17f * s2) + k * 2);
+		float	sd = sinf (ltime * (0.9f + 0.4f * s2) + k * 5 + sph);
+		float	el = 0.7f * sinf (ltime * (0.61f + 0.30f * s1) + k * 2 + sph)
+			* cosf (ltime * (0.29f + 0.20f * s0) + k)
+			+ 0.35f * sd * sd * sd;										// dart
+		float	r  = 7.0f + 5.0f * sinf (ltime * (0.43f + 0.25f * s2) + k * 5 + sph)
+			+ 3.0f * sinf (ltime * (1.1f + 0.4f * s0) + k * 3);
+
+		fly.origin[0] = origin[0] + r * cosf (az) * cosf (el)
+			+ 1.8f * sinf (ltime * (15.0f + 6.0f * s1) + k);			// buzz jitter
+		fly.origin[1] = origin[1] + r * sinf (az) * cosf (el)
+			+ 1.8f * cosf (ltime * (18.0f + 5.0f * s0) + k * 5);
+		fly.origin[2] = origin[2] + 10.0f + 8.0f * sinf (el)
+			+ 1.4f * sinf (ltime * (21.0f + 4.0f * s2) + k * 3);
+		fly.frame = ((cl.time / 35) + i + seed) & 1;					// wingbeat
+		V_AddEntity (&fly);
+	}
+}
+
+/*
+===============
+CL_BurnEffect
+
+Fire on an entity (EF_BURNING). Rising orange particles licking off the
+body -- fire colors 0xe0-0xe7 only, NEVER 0xe8+ (those are blood texels
+and would stamp blood decals via the wall-stick pass). big = a burning
+monster: wide flame column plus a flickering light; small = one tongue
+of the flamethrower's cone, a tight fast-fading puff.
+===============
+*/
+static void CL_FlameParticle (vec3_t org, float spread, float zlo, float zhi)
+{
+	cparticle_t	*p;
+
+	if (!free_particles)
+		return;
+	p = free_particles;
+	free_particles = p->next;
+	p->next = active_particles;
+	active_particles = p;
+
+	p->time = cl.time;
+	p->color = 0xe0 + (rand () & 7);
+	p->org[0] = org[0] + crand () * spread;
+	p->org[1] = org[1] + crand () * spread;
+	p->org[2] = org[2] + zlo + frand () * (zhi - zlo);
+	p->vel[0] = crand () * 12;
+	p->vel[1] = crand () * 12;
+	p->vel[2] = 30 + frand () * 50;
+	p->accel[0] = p->accel[1] = 0;
+	p->accel[2] = 60;				// fire rises
+	p->alpha = 0.8f;
+	p->alphavel = -(1.6f + frand () * 1.6f);
+}
+
+void CL_BurnEffect (centity_t *cent, vec3_t origin, qboolean big)
+{
+	int		i;
+
+	if (big)
+	{	// a burning body: wide rising flame column + flickering light
+		for (i = 0; i < 8; i++)
+			CL_FlameParticle (origin, 12.0f, -8.0f, 24.0f);
+		V_AddLight (origin, 130 + (rand () % 40), 1.0f, 0.55f, 0.15f);
+		return;
+	}
+
+	// one tongue of the cone: fill the whole segment it covered since the
+	// last frame so the spray reads as a continuous stream of fire, not a
+	// dotted line of puffs
+	{
+		vec3_t	move, vec;
+		float	len;
+
+		VectorCopy (cent->lerp_origin, move);
+		VectorSubtract (origin, cent->lerp_origin, vec);
+		len = VectorNormalize (vec);
+		// a tongue that just appeared in a reused entity slot has a stale
+		// lerp_origin from the slot's previous occupant: fresh entities
+		// arrive with prev == current, and a real tongue covers at most
+		// ~50u between server frames -- either sign means no segment yet
+		if (len > 60 || VectorCompare (cent->prev.origin, cent->current.origin))
+		{
+			VectorCopy (origin, move);
+			len = 0;
+		}
+		VectorScale (vec, 5, vec);
+		while (len > 0)
+		{
+			CL_FlameParticle (move, 3.5f, -3.0f, 3.0f);
+			CL_FlameParticle (move, 3.5f, -3.0f, 3.0f);
+			VectorAdd (move, vec, move);
+			len -= 5;
+		}
+		for (i = 0; i < 4; i++)		// bright head of the tongue
+			CL_FlameParticle (origin, 4.5f, -4.0f, 4.0f);
+	}
+}
+
 void CL_FlyEffect (centity_t *ent, vec3_t origin)
 {
 	int		n;
 	int		count;
-	int		starttime;
 
-	if (ent->fly_stoptime < cl.time)
-	{
-		starttime = cl.time;
-		ent->fly_stoptime = cl.time + 60000;
-	}
-	else
-	{
-		starttime = ent->fly_stoptime - 60000;
-	}
+	if (ent->fly_stoptime < cl.time)		// stale: flies just (re)appeared
+		ent->fly_starttime = cl.time;
+	ent->fly_stoptime = cl.time + 100;		// rolling still-buzzing mark
 
-	n = cl.time - starttime;
+	// the swarm builds up over 20s and then STAYS -- corpses keep their
+	// flies for as long as they lie there (id ramped back down after 60s)
+	n = cl.time - ent->fly_starttime;
 	if (n < 20000)
 		count = n * 162 / 20000.0;
 	else
-	{
-		n = ent->fly_stoptime - cl.time;
-		if (n < 20000)
-			count = n * 162 / 20000.0;
-		else
-			count = 162;
-	}
+		count = 162;
 
-	CL_FlyParticles (origin, count);
+	CL_AddFlies (origin, count, (int)(ent - cl_entities));
 }
 
 
@@ -1929,11 +2113,7 @@ void CL_BfgParticles (entity_t *ent)
 	vec3_t		v;
 	float		ltime;
 	
-	if (!avelocities[0][0])
-	{
-		for (i=0 ; i<NUMVERTEXNORMALS*3 ; i++)
-			avelocities[0][i] = (rand()&255) * 0.01;
-	}
+	CL_InitAvelocities ();
 
 
 	ltime = (float)cl.time / 1000.0;
@@ -2187,6 +2367,13 @@ void CL_AddParticles (void)
 	vec3_t			org;
 	int				color;
 	cparticle_t		*active, *tail;
+	static int		tracetime;	// last blood wall-trace pass -- positions are
+								// closed-form in time, so tracing the whole
+								// segment since then at ~20Hz sees the same
+								// wall hits as tracing every rendered frame
+	qboolean		do_traces;
+
+	do_traces = (cl.time - tracetime >= 50) || cl.time < tracetime;
 
 	active = NULL;
 	tail = NULL;
@@ -2231,6 +2418,37 @@ void CL_AddParticles (void)
 		org[1] = p->org[1] + p->vel[1]*time + p->accel[1]*time2;
 		org[2] = p->org[2] + p->vel[2]*time + p->accel[2]*time2;
 
+		// blood texels (palette 0xe8..0xef: hit sprays, gib trails, blood
+		// splashes) don't pass through walls -- trace the motion since the
+		// last pass and where one lands, stamp a small splat that stays
+		if (do_traces && color >= 0xe8 && color <= 0xef && re.AddDecal
+			&& p->alphavel != INSTANT_PARTICLE)
+		{
+			float	tp = (tracetime - p->time) * 0.001f;
+
+			if (tp < 0)
+				tp = 0;
+			if (tp < time)		// it moved since last frame
+			{
+				vec3_t	old;
+				trace_t	tr;
+
+				old[0] = p->org[0] + p->vel[0]*tp + p->accel[0]*tp*tp;
+				old[1] = p->org[1] + p->vel[1]*tp + p->accel[1]*tp*tp;
+				old[2] = p->org[2] + p->vel[2]*tp + p->accel[2]*tp*tp;
+				tr = CM_BoxTrace (old, org, vec3_origin, vec3_origin, 0, MASK_SOLID);
+				if (tr.fraction < 1.0f)
+				{
+					if (frand() < 0.4f)		// not every droplet marks
+						re.AddDecal (tr.endpos, tr.plane.normal,
+							1.6f + frand()*1.6f, DECAL_BLOOD);
+					p->alpha = 0;			// consumed: freed next frame
+					p->alphavel = -1;
+					continue;
+				}
+			}
+		}
+
 		V_AddParticle (org, color, alpha);
 		// PMM
 		if (p->alphavel == INSTANT_PARTICLE)
@@ -2241,8 +2459,143 @@ void CL_AddParticles (void)
 	}
 
 	active_particles = active;
+	if (do_traces)
+		tracetime = cl.time;
 }
 
+
+/*
+===============
+CL_BloodyFootsteps
+
+Called on every footstep event. Stepping through a blood death pool soaks
+the boots; the next several steps stamp boot prints that fade out print by
+print, alternating left/right of the walker's track. Other players only:
+the local player is handled per-frame by CL_BloodyBoots (footstep events
+are too sparse to catch a pool crossing).
+===============
+*/
+#define BLOOD_SOAK_STEPS	8		// prints left after stepping in blood
+#define PRINT_SIDE_OFS		4.5f	// print offset off the track, per foot
+#define PRINT_RADIUS		7.5f
+// fade trails off but never below half -- prints faded past ~0.4 were
+// invisible on dark base floors
+#define PRINT_ALPHA(steps)	(0.5f + 0.5f * (steps) / (float)BLOOD_SOAK_STEPS)
+
+// one boot print at the traced floor point, heading fwd, alternating feet
+static void CL_StampBootPrint (centity_t *cent, trace_t *tr, vec3_t fwd)
+{
+	vec3_t	right, spot;
+
+	CrossProduct (fwd, tr->plane.normal, right);
+	VectorMA (tr->endpos, (cent->bloody_steps & 1) ? PRINT_SIDE_OFS : -PRINT_SIDE_OFS,
+		right, spot);
+	re.AddDecalOriented (spot, tr->plane.normal, fwd, PRINT_RADIUS,
+		PRINT_ALPHA (cent->bloody_steps), DECAL_FOOTPRINT);
+	cent->bloody_steps--;
+}
+
+static void CL_BloodyFootsteps (entity_state_t *ent)
+{
+	centity_t	*cent;
+	vec3_t		down, fwd;
+	trace_t		tr;
+
+	if (!re.BloodPoolAt || !re.AddDecalOriented)
+		return;
+	if (ent->number == cl.playernum + 1)
+		return;
+
+	cent = &cl_entities[ent->number];
+	if (cent->bloody_steps <= 0 && !re.BloodPoolAt (NULL))
+		return;			// clean boots, no blood anywhere: skip the trace
+
+	// find the floor under the step
+	VectorCopy (ent->origin, down);
+	down[2] -= 64;
+	tr = CM_BoxTrace (ent->origin, down, vec3_origin, vec3_origin, 0, MASK_SOLID);
+	if (tr.fraction == 1.0f)
+		return;
+
+	if (re.BloodPoolAt (tr.endpos))
+	{	// standing in the pool itself: (re)soak the boots
+		cent->bloody_steps = BLOOD_SOAK_STEPS;
+		return;
+	}
+	if (cent->bloody_steps <= 0)
+		return;
+
+	AngleVectors (ent->angles, fwd, NULL, NULL);
+	CL_StampBootPrint (cent, &tr, fwd);
+}
+
+/*
+===============
+CL_BloodyBoots
+
+Local-player boot blood, checked every rendered frame. Footstep EVENTS
+are useless for this: the server only sends them above run speed, and
+even then one lands every ~120 units while pools are 40-120 wide -- the
+player crosses a whole pool between events. So the floor under the view
+is sampled here instead: standing in blood soaks the boots, and once
+soaked a print is stamped every stride-length of ground actually covered,
+pointing the way the player moved, alternating feet, fading step by step.
+===============
+*/
+#define PRINT_STRIDE	40.0f	// ground covered between prints
+
+void CL_BloodyBoots (void)
+{
+	static vec3_t	anchor;			// floor point of the last soak / print
+	centity_t	*cent;
+	vec3_t		down, delta, fwd;
+	trace_t		tr;
+	float		dist;
+
+	if (!re.BloodPoolAt || !re.AddDecalOriented)
+		return;
+	if (cls.state != ca_active)
+		return;
+	if (!(cl.frame.playerstate.pmove.pm_flags & PMF_ON_GROUND))
+		return;			// jumping clear over a pool doesn't soak
+
+	cent = &cl_entities[cl.playernum + 1];
+	if (cent->bloody_steps <= 0 && !re.BloodPoolAt (NULL))
+		return;			// clean boots, no blood anywhere: skip the trace
+
+	VectorCopy (cl.refdef.vieworg, down);
+	down[2] -= 100;		// eye rides ~30-55 above the floor
+	tr = CM_BoxTrace (cl.refdef.vieworg, down, vec3_origin, vec3_origin, 0, MASK_SOLID);
+	if (tr.fraction == 1.0f)
+		return;
+
+	if (re.BloodPoolAt (tr.endpos))
+	{	// standing in blood: (re)soak; prints start past the edge
+		if (cent->bloody_steps <= 0)
+			Com_DPrintf ("boots bloodied\n");	// developer 1 diagnostic
+		cent->bloody_steps = BLOOD_SOAK_STEPS;
+		VectorCopy (tr.endpos, anchor);
+		return;
+	}
+	if (cent->bloody_steps <= 0)
+		return;
+
+	VectorSubtract (tr.endpos, anchor, delta);
+	delta[2] = 0;
+	dist = VectorLength (delta);
+	if (dist < PRINT_STRIDE)
+		return;
+	if (dist > 5.0f * PRINT_STRIDE)
+	{	// teleported / respawned: re-anchor, don't smear a print
+		VectorCopy (tr.endpos, anchor);
+		return;
+	}
+
+	VectorScale (delta, 1.0f / dist, fwd);
+	Com_DPrintf ("bloody print %d\n", cent->bloody_steps);
+	CL_StampBootPrint (cent, &tr, fwd);
+	VectorCopy (tr.endpos, anchor);
+}
 
 /*
 ==============
@@ -2270,6 +2623,7 @@ void CL_EntityEvent (entity_state_t *ent)
 	case EV_FOOTSTEP:
 		if (cl_footsteps->value)
 			S_StartSound (NULL, ent->number, CHAN_BODY, cl_sfx_footsteps[rand()&3], 1, ATTN_NORM, 0);
+		CL_BloodyFootsteps (ent);
 		break;
 	case EV_FALLSHORT:
 		S_StartSound (NULL, ent->number, CHAN_AUTO, S_RegisterSound ("player/land1.wav"), 1, ATTN_NORM, 0);

@@ -586,6 +586,9 @@ typedef struct
 #define EF_SPINNINGLIGHTS	0x00800000
 #define EF_PLASMA			0x01000000
 #define EF_TRAP				0x02000000
+// port: baseq2 never emits the xatrix trap effect -- its bit now means ON
+// FIRE (flamethrower): the client draws rising flame + a flickering light
+#define EF_BURNING			EF_TRAP
 
 //ROGUE
 #define EF_TRACKER			0x04000000
@@ -610,6 +613,9 @@ typedef struct
 #define RF_SHELL_RED		1024
 #define	RF_SHELL_GREEN		2048
 #define RF_SHELL_BLUE		4096
+// port: corpse burned to death -- the renderer draws the model charred
+// near-black (must stay inside 16 bits: renderfx is U_RENDERFX16 max)
+#define RF_CHARRED			0x00002000
 
 //ROGUE
 #define RF_IR_VISIBLE		0x00008000		// 32768
@@ -664,6 +670,8 @@ typedef struct
 #define	MZ_NUKE4			38
 #define	MZ_NUKE8			39
 //ROGUE
+
+#define MZ_FLAMER			40		// port: flamethrower muzzle flame cone
 
 //
 // monster muzzle flashes
@@ -965,8 +973,10 @@ typedef enum
 	TE_WIDOWSPLASH,
 	TE_EXPLOSION1_BIG,
 	TE_EXPLOSION1_NP,
-	TE_FLECHETTE
+	TE_FLECHETTE,
 //ROGUE
+	TE_GRENADE_BOUNCE,		// port: launcher grenade scuffs the wall it bounces off
+	TE_BLOOD_POOL			// port: growing blood pool under a dying monster
 } temp_event_t;
 
 #define SPLASH_UNKNOWN		0

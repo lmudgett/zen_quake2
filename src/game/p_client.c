@@ -352,6 +352,10 @@ void ClientObituary (edict_t *self, edict_t *inflictor, edict_t *attacker)
 				message = "was melted by";
 				message2 = "'s hyperblaster";
 				break;
+			case MOD_FLAMER:
+				message = "was burned to a crisp by";
+				message2 = "'s flamethrower";
+				break;
 			case MOD_RAILGUN:
 				message = "was railed by";
 				break;
@@ -624,6 +628,7 @@ void InitClientPersistant (gclient_t *client)
 	client->pers.max_rockets	= 50;
 	client->pers.max_grenades	= 50;
 	client->pers.max_cells		= 200;
+	client->pers.max_fuel		= 150;
 	client->pers.max_slugs		= 50;
 
 	client->pers.connected = true;
@@ -958,6 +963,9 @@ void CopyToBodyQue (edict_t *ent)
 	gi.unlinkentity (body);
 	body->s = ent->s;
 	body->s.number = body - g_edicts;
+	// the body que edict never runs G_RunBurn, so inherited fire would
+	// flame forever; keep the charred look, drop the live burn
+	body->s.effects &= ~EF_BURNING;
 
 	body->svflags = ent->svflags;
 	VectorCopy (ent->mins, body->mins);
@@ -1208,6 +1216,8 @@ void PutClientInServer (edict_t *ent)
 
 	// clear entity state values
 	ent->s.effects = 0;
+	ent->s.renderfx = 0;			// a burned-to-death corpse was charred
+	ent->burnfinished = 0;			// and any burn ends with the old body
 	ent->s.modelindex = 255;		// will use the skin specified model
 	ent->s.modelindex2 = 255;		// custom gun model
 	// sknum is player num and weapon number

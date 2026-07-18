@@ -467,6 +467,8 @@ Q2_DLL_EXPORT refexport_t GetRefAPI (refimport_t rimp)
 	re.DrawStretchRaw = GL3_Draw_StretchRaw;
 
 	re.AddDecal = GL3_AddDecal;
+	re.AddDecalOriented = GL3_AddDecalOriented;
+	re.BloodPoolAt = GL3_BloodPoolAt;
 
 	re.CinematicSetPalette = GL3_CinematicSetPalette;
 	re.BeginFrame = GL3_BeginFrame;

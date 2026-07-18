@@ -393,6 +393,10 @@ void G_RunFrame (void)
 			}
 		}
 
+		G_RunBurn (ent);		// flamethrower fires tick here
+		if (!ent->inuse)
+			continue;			// burned apart this frame
+
 		if (i > 0 && i <= maxclients->value)
 		{
 			ClientBeginServerFrame (ent);

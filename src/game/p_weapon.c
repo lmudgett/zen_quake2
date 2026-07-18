@@ -950,6 +950,91 @@ void Weapon_HyperBlaster (edict_t *ent)
 /*
 ======================================================================
 
+FLAMETHROWER
+
+======================================================================
+*/
+
+void Weapon_Flamethrower_Fire (edict_t *ent)
+{
+	vec3_t	start, forward, right, offset;
+	int		damage = 4;
+
+	ent->client->weapon_sound = gi.soundindex ("weapons/rockfly.wav");
+
+	if (!(ent->client->buttons & BUTTON_ATTACK))
+	{
+		ent->client->ps.gunframe++;
+	}
+	else
+	{
+		if (! ent->client->pers.inventory[ent->client->ammo_index] )
+		{
+			if (level.time >= ent->pain_debounce_time)
+			{
+				gi.sound(ent, CHAN_VOICE, gi.soundindex("weapons/noammo.wav"), 1, ATTN_NORM, 0);
+				ent->pain_debounce_time = level.time + 1;
+			}
+			NoAmmoWeaponChange (ent);
+		}
+		else
+		{
+			if (is_quad)
+				damage *= 4;
+
+			AngleVectors (ent->client->v_angle, forward, right, NULL);
+			VectorSet (offset, 14, 8, ent->viewheight - 6);
+			P_ProjectSource (ent->client, ent->s.origin, offset, forward, right, start);
+			fire_flame (ent, start, forward, damage, 450);
+
+			// the client draws the muzzle flame cone off this
+			gi.WriteByte (svc_muzzleflash);
+			gi.WriteShort (ent - g_edicts);
+			gi.WriteByte (MZ_FLAMER);
+			gi.multicast (ent->s.origin, MULTICAST_PVS);
+
+			ent->client->kick_origin[0] = crandom() * 0.25;
+			ent->client->kick_angles[0] = -0.6f;
+
+			if (! ( (int)dmflags->value & DF_INFINITE_AMMO ) )
+				ent->client->pers.inventory[ent->client->ammo_index]--;
+
+			ent->client->anim_priority = ANIM_ATTACK;
+			if (ent->client->ps.pmove.pm_flags & PMF_DUCKED)
+			{
+				ent->s.frame = FRAME_crattak1 - 1;
+				ent->client->anim_end = FRAME_crattak9;
+			}
+			else
+			{
+				ent->s.frame = FRAME_attack1 - 1;
+				ent->client->anim_end = FRAME_attack8;
+			}
+		}
+
+		ent->client->ps.gunframe++;
+		if (ent->client->ps.gunframe == 9 && ent->client->pers.inventory[ent->client->ammo_index])
+			ent->client->ps.gunframe = 5;
+	}
+
+	if (ent->client->ps.gunframe == 9)
+		ent->client->weapon_sound = 0;
+}
+
+void Weapon_Flamethrower (edict_t *ent)
+{
+	// frame layout comes from tools/gen_flamer_model.py frame_offsets():
+	// raise 0-4, fire 5-8, idle 9-19, lower 20-23 -- keep in sync (the
+	// fire loop in Weapon_Flamethrower_Fire hardcodes 9 -> 5 too)
+	static int	pause_frames[]	= {14, 19, 0};
+	static int	fire_frames[]	= {5, 6, 7, 8, 0};
+
+	Weapon_Generic (ent, 4, 8, 19, 23, pause_frames, fire_frames, Weapon_Flamethrower_Fire);
+}
+
+/*
+======================================================================
+
 MACHINEGUN / CHAINGUN
 
 ======================================================================

@@ -406,6 +406,7 @@ void infantry_die (edict_t *self, edict_t *inflictor, edict_t *attacker, int dam
 // regular death
 	self->deadflag = DEAD_DEAD;
 	self->takedamage = DAMAGE_YES;
+	self->headless = false;
 
 	n = rand() % 3;
 	if (n == 0)
@@ -414,7 +415,9 @@ void infantry_die (edict_t *self, edict_t *inflictor, edict_t *attacker, int dam
 		gi.sound (self, CHAN_VOICE, sound_die2, 1, ATTN_NORM, 0);
 	}
 	else if (n == 1)
-	{
+	{	// death2 is the decapitation anim ("off with his head"): the
+		// corpse has no head left, so gibbing it later must not drop one
+		self->headless = true;
 		self->monsterinfo.currentmove = &infantry_move_death2;
 		gi.sound (self, CHAN_VOICE, sound_die1, 1, ATTN_NORM, 0);
 	}

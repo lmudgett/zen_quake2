@@ -131,6 +131,9 @@ typedef struct
 #define DECAL_ENERGY	2		// blaster burn
 #define DECAL_BFG		3		// scorch, tinted green at draw time
 #define DECAL_RAIL		4		// Q3-style blue energy splat
+#define DECAL_BLOOD		5		// hit splatter
+#define DECAL_BLOOD_POOL 6		// death pool; grows over a few seconds
+#define DECAL_FOOTPRINT	7		// bloody boot print
 
 //
 // these are the functions exported by the refresh module
@@ -172,6 +175,16 @@ typedef struct
 	// plane normal for bullets/blaster; NULL for explosions, which project
 	// onto every facing surface within radius (they carry no direction)
 	void	(*AddDecal) (vec3_t origin, vec3_t dir, float radius, int type);
+
+	// oriented stamp (boot prints): forward picks the mark's heading on
+	// the surface instead of a random roll; alpha scales its opacity
+	void	(*AddDecalOriented) (vec3_t origin, vec3_t normal, vec3_t forward,
+				float radius, float alpha, int type);
+
+	// is blood (pool or floor splatter) lying at this point? (bloody
+	// boots). origin == NULL asks only "any blood on the map at all?" --
+	// an O(1) check for skipping per-frame work on clean maps
+	qboolean (*BloodPoolAt) (vec3_t origin);
 
 	void	(*DrawGetPicSize) (int *w, int *h, char *name);	// will return 0 0 if not found
 	void	(*DrawPic) (int x, int y, char *name);

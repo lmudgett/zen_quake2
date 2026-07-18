@@ -104,20 +104,14 @@ void monster_fire_bfg (edict_t *self, vec3_t start, vec3_t aimdir, int damage, i
 // Monster utility functions
 //
 
-static void M_FliesOff (edict_t *self)
-{
-	self->s.effects &= ~EF_FLIES;
-	self->s.sound = 0;
-}
-
 static void M_FliesOn (edict_t *self)
 {
 	if (self->waterlevel)
 		return;
+	// the swarm stays for as long as the corpse lies there (id scheduled
+	// M_FliesOff after 60 seconds); gibbing the body still clears it
 	self->s.effects |= EF_FLIES;
 	self->s.sound = gi.soundindex ("infantry/inflies1.wav");
-	self->think = M_FliesOff;
-	self->nextthink = level.time + 60;
 }
 
 void M_FlyCheck (edict_t *self)
@@ -550,6 +544,12 @@ qboolean monster_start (edict_t *self)
 
 	if (!(self->monsterinfo.aiflags & AI_GOOD_GUY))
 		level.total_monsters++;
+
+	{	// precache the monster's own severed-head model for gib time
+		char	*headmodel = MonsterHeadModel (self);
+		if (headmodel)
+			gi.modelindex (headmodel);
+	}
 
 	self->nextthink = level.time + FRAMETIME;
 	self->svflags |= SVF_MONSTER;

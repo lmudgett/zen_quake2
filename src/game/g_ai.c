@@ -97,6 +97,25 @@ void ai_move (edict_t *self, float dist)
 
 /*
 =============
+ai_burning_panic
+
+On fire: the monster forgets the fight and sprints blindly, direction
+rerolled every burn tick (G_RunBurn). Hooked at the top of every ai_
+move function so whatever animation is playing, the body still flails.
+Returns true when it consumed the frame.
+==============
+*/
+static qboolean ai_burning_panic (edict_t *self, float dist)
+{
+	if (!(self->monsterinfo.aiflags & AI_BURNING_PANIC))
+		return false;
+	M_ChangeYaw (self);
+	M_walkmove (self, self->s.angles[YAW], dist ? dist * 1.4f : 6.0f);
+	return true;
+}
+
+/*
+=============
 ai_stand
 
 Used for standing around and looking for players
@@ -106,6 +125,9 @@ Distance is for slight position adjustments needed by the animations
 void ai_stand (edict_t *self, float dist)
 {
 	vec3_t	v;
+
+	if (ai_burning_panic (self, dist))
+		return;
 
 	if (dist)
 		M_walkmove (self, self->s.angles[YAW], dist);
@@ -162,6 +184,9 @@ The monster is walking it's beat
 */
 void ai_walk (edict_t *self, float dist)
 {
+	if (ai_burning_panic (self, dist))
+		return;
+
 	M_MoveToGoal (self, dist);
 
 	// check for noticing a player
@@ -194,6 +219,9 @@ Use this call with a distnace of 0 to replace ai_face
 void ai_charge (edict_t *self, float dist)
 {
 	vec3_t	v;
+
+	if (ai_burning_panic (self, dist))
+		return;
 
 	VectorSubtract (self->enemy->s.origin, self->s.origin, v);
 	self->ideal_yaw = vectoyaw(v);
@@ -923,6 +951,9 @@ void ai_run (edict_t *self, float dist)
 	vec3_t		v_forward, v_right;
 	float		left, center, right;
 	vec3_t		left_target, right_target;
+
+	if (ai_burning_panic (self, dist))
+		return;
 
 	// if we're going to a combat point, just proceed
 	if (self->monsterinfo.aiflags & AI_COMBAT_POINT)

@@ -63,6 +63,8 @@ typedef struct
 	vec3_t		lerp_origin;		// for trails (variable hz)
 
 	int			fly_stoptime;
+	int			fly_starttime;		// swarm ramp-up start (flies persist)
+	int			bloody_steps;		// boot prints left after a blood pool
 } centity_t;
 
 #define MAX_CLIENTWEAPONMODELS		20		// PGM -- upped from 16 to fit the chainfist vwep
@@ -548,8 +550,10 @@ void CL_BigTeleportParticles (vec3_t org);
 void CL_RocketTrail (vec3_t start, vec3_t end, centity_t *old);
 void CL_DiminishingTrail (vec3_t start, vec3_t end, centity_t *old, int flags);
 void CL_FlyEffect (centity_t *ent, vec3_t origin);
+void CL_BurnEffect (centity_t *cent, vec3_t origin, qboolean big);
 void CL_BfgParticles (entity_t *ent);
 void CL_AddParticles (void);
+void CL_BloodyBoots (void);
 void CL_EntityEvent (entity_state_t *ent);
 // RAFAEL
 void CL_TrapParticles (entity_t *ent);

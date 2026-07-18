@@ -255,3 +255,12 @@ if(Q2_SIGN_ENABLED)
     q2_sign(quake2)
     q2_sign(ref_gl3)
 endif()
+
+# ---------------------------------------------------------------------------
+# release_pak — pack the port's new assets (repo baseq2/ tree) into
+# build/baseq2/pak1.pak + a manifest. RELEASE ONLY: paks shadow loose files,
+# so a stale pak1.pak hides freshly built dev assets. Not part of ALL.
+# ---------------------------------------------------------------------------
+add_custom_target(release_pak
+    COMMAND python ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_pak.py
+    COMMENT "Packing new assets into build/baseq2/pak1.pak")

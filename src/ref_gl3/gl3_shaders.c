@@ -34,6 +34,7 @@ GLuint GL3_CompileProgram (const char *vtx, const char *frag)
 	glBindAttribLocation (prog, 0, "a_pos");
 	glBindAttribLocation (prog, 1, "a_uv");
 	glBindAttribLocation (prog, 2, "a_lmuv");
+	glBindAttribLocation (prog, 2, "a_alpha");	// decals: no shader uses both
 	glBindAttribLocation (prog, 3, "a_color");
 	glBindAttribLocation (prog, 4, "a_ppos");	// per-instance particle center
 	glLinkProgram (prog);

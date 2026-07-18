@@ -1039,9 +1039,16 @@ void CL_AddPacketEntities (frame_t *frame)
 			continue;
 		}
 
-		// if set to invisible, skip
+		// if set to invisible, skip -- but a model-less entity wearing
+		// EF_BURNING is a flamethrower tongue: draw its fire (and keep
+		// lerp_origin fresh for the stream trail) before skipping
 		if (!s1->modelindex)
+		{
+			if (effects & EF_BURNING)
+				CL_BurnEffect (cent, ent.origin, false);
+			VectorCopy (ent.origin, cent->lerp_origin);
 			continue;
+		}
 
 		if (effects & EF_BFG)
 		{
@@ -1212,13 +1219,12 @@ void CL_AddPacketEntities (frame_t *frame)
 				}
 				V_AddLight (ent.origin, i, 0, 1, 0);
 			}
-			// RAFAEL
-			else if (effects & EF_TRAP)
+			// port: the xatrix trap bit now means ON FIRE (flamethrower).
+			// Model-less flame tongues were already drawn at the top of
+			// the loop; anything reaching here is a burning body.
+			else if (effects & EF_BURNING)
 			{
-				ent.origin[2] += 32;
-				CL_TrapParticles (&ent);
-				i = (rand()%100) + 100;
-				V_AddLight (ent.origin, i, 1, 0.8, 0.1);
+				CL_BurnEffect (cent, ent.origin, true);
 			}
 			else if (effects & EF_FLAG1)
 			{
@@ -1482,6 +1488,7 @@ void CL_AddEntities (void)
 //	CL_AddLightStyles ();
 
 	CL_CalcViewValues ();
+	CL_BloodyBoots ();			// wants the fresh vieworg
 	// PMM - moved this here so the heat beam has the right values for the vieworg, and can lock the beam to the gun
 	CL_AddPacketEntities (&cl.frame);
 #if 0

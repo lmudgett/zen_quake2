@@ -151,6 +151,8 @@ void ThrowGib (edict_t *self, char *gibname, int damage, int type)
 	gi.setmodel (gib, gibname);
 	gib->solid = SOLID_NOT;
 	gib->s.effects |= EF_GIB;
+	if (self->s.renderfx & RF_CHARRED)
+		gib->s.renderfx |= RF_CHARRED;	// a burnt body throws burnt chunks
 	gib->flags |= FL_NO_KNOCKBACK;
 	gib->takedamage = DAMAGE_YES;
 	gib->die = gib_die;
@@ -180,12 +182,77 @@ void ThrowGib (edict_t *self, char *gibname, int damage, int type)
 	gi.linkentity (gib);
 }
 
+/*
+=================
+MonsterHeadModel
+
+The monster's own severed head (carved out of its model by
+tools/gen_heads.py, textured by its real skin), or NULL for things
+without one -- those fall back to the generic gib head.
+=================
+*/
+static const struct { const char *prefix; const char *dir; } head_dirs[] = {
+	{"monster_soldier",   "soldier"},
+	{"monster_infantry",  "infantry"},
+	{"monster_gunner",    "gunner"},
+	{"monster_berserk",   "berserk"},
+	{"monster_gladiator", "gladiatr"},
+	{"monster_medic",     "medic"},
+	// flipper and flyer have no head-like geometry to carve -- they keep
+	// the generic gib head
+	{"monster_hover",     "hover"},
+	{"monster_floater",   "float"},
+	{"monster_parasite",  "parasite"},
+	// the mutant's head is buried between his shoulders -- no cut
+	// isolates it, so he keeps the generic gib head
+	{"monster_brain",     "brain"},
+	{"monster_chick",     "bitch"},
+	{"monster_tank",      "tank"},		// commander shares the model
+	{"monster_supertank", "boss1"},
+	{"monster_boss2",     "boss2"},
+	{"monster_jorg",      "boss3/jorg"},
+	{"monster_makron",    "boss3/rider"},
+	{"misc_insane",       "insane"},
+	{NULL, NULL}
+};
+
+char *MonsterHeadModel (edict_t *self)
+{
+	static char	path[MAX_QPATH];
+	int			i;
+
+	if (!self->classname)
+		return NULL;
+	for (i = 0; head_dirs[i].prefix; i++)
+	{
+		if (!strncmp (self->classname, head_dirs[i].prefix,
+				strlen (head_dirs[i].prefix)))
+		{
+			Com_sprintf (path, sizeof(path),
+				"models/monsters/%s/head.md2", head_dirs[i].dir);
+			return path;
+		}
+	}
+	return NULL;
+}
+
 void ThrowHead (edict_t *self, char *gibname, int damage, int type)
 {
 	vec3_t	vd;
 	float	vscale;
+	char	*headmodel;
 
-	self->s.skinnum = 0;
+	if (self->headless)
+	{	// the death animation already took the head off: gibbing this
+		// corpse yields one more meat chunk, never a second head
+		gibname = "models/objects/gibs/sm_meat/tris.md2";
+		self->s.skinnum = 0;
+	}
+	else if ((headmodel = MonsterHeadModel (self)) != NULL)
+		gibname = headmodel;	// its own head; keep skinnum, so soldier
+								// variants and pain skins carry over
+	else
+		self->s.skinnum = 0;
 	self->s.frame = 0;
 	VectorClear (self->mins);
 	VectorClear (self->maxs);
@@ -194,12 +261,10 @@ void ThrowHead (edict_t *self, char *gibname, int damage, int type)
 	gi.setmodel (self, gibname);
 	self->solid = SOLID_NOT;
 	self->s.effects |= EF_GIB;
-	self->s.effects &= ~EF_FLIES;
+	self->s.effects &= ~(EF_FLIES | EF_BURNING);
 	self->s.sound = 0;
 	self->flags |= FL_NO_KNOCKBACK;
 	self->svflags &= ~SVF_MONSTER;
-	self->takedamage = DAMAGE_YES;
-	self->die = gib_die;
 
 	if (type == GIB_ORGANIC)
 	{
@@ -213,14 +278,66 @@ void ThrowHead (edict_t *self, char *gibname, int damage, int type)
 		vscale = 1.0;
 	}
 
-	VelocityForDamage (damage, vd);
-	VectorMA (self->velocity, vscale, vd, self->velocity);
-	ClipGibVelocity (self);
+	if (self->headless)
+	{	// plain meat: tumbles and vanishes like any other gib
+		VelocityForDamage (damage, vd);
+		VectorMA (self->velocity, vscale, vd, self->velocity);
+		ClipGibVelocity (self);
+		self->takedamage = DAMAGE_YES;
+		self->die = gib_die;
+		self->avelocity[0] = random()*600;
+		self->avelocity[1] = random()*600;
+		self->avelocity[2] = random()*600;
+		self->think = G_FreeEdict;
+		self->nextthink = level.time + 10 + random()*10;
+		gi.linkentity (self);
+		return;
+	}
 
+	self->takedamage = DAMAGE_NO;	// a trophy: stray blasts can't pop it
+	self->die = NULL;
+
+	// trophy heads ignore the damage-scaled gib scatter entirely: a random
+	// heading and gentle speed drops some at the boots and rolls some off
+	// across the room, so kill sites don't all look alike
+	{
+		float	ang = random () * 2.0f * (float)M_PI;
+		float	spd = 30.0f + random () * 130.0f;
+
+		self->velocity[0] = self->velocity[0] * 0.25f + cosf (ang) * spd;
+		self->velocity[1] = self->velocity[1] * 0.25f + sinf (ang) * spd;
+		self->velocity[2] = 90.0f + random () * 80.0f;
+	}
+
+	// randomized resting orientation: tipped and rolled a little, plus
+	// flight spin that freezes at an arbitrary yaw on landing -- kept
+	// shy of a full flop so the open neck cut stays against the floor
+	self->s.angles[PITCH] = crandom () * 30;
+	self->s.angles[ROLL] = crandom () * 30;
 	self->avelocity[YAW] = crandom()*600;
 
-	self->think = G_FreeEdict;
-	self->nextthink = level.time + 10 + random()*10;
+	// Quake-1 trophy heads: they stay on the floor for good (the other
+	// gibs still vanish). Capped so endless waves can't exhaust the
+	// edict pool -- past the cap the oldest head makes way.
+	self->classname = "head_gib";
+	self->timestamp = level.time;
+	self->think = NULL;
+	self->nextthink = 0;
+	{
+		edict_t	*e = NULL, *oldest = NULL;
+		int		nheads = 0;
+
+		while ((e = G_Find (e, FOFS(classname), "head_gib")) != NULL)
+		{
+			if (e == self)
+				continue;
+			nheads++;
+			if (!oldest || e->timestamp < oldest->timestamp)
+				oldest = e;
+		}
+		if (nheads >= 64 && oldest)
+			G_FreeEdict (oldest);
+	}
 
 	gi.linkentity (self);
 }

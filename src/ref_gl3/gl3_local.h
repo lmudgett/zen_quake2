@@ -279,6 +279,9 @@ void GL3_InitDecals (void);
 void GL3_ShutdownDecals (void);
 void GL3_DecalsNewMap (void);		// wipe marks when the world changes
 void GL3_AddDecal (vec3_t origin, vec3_t dir, float radius, int type);
+void GL3_AddDecalOriented (vec3_t origin, vec3_t normal, vec3_t forward,
+	float radius, float alpha, int type);
+qboolean GL3_BloodPoolAt (vec3_t origin);
 void GL3_DrawDecals (const float *viewproj);
 void GL3_DrawDecalsHeat (const float *viewproj, GLuint scene_tex);	// hot-burn shimmer
 

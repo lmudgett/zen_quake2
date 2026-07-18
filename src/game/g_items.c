@@ -30,6 +30,7 @@ void Weapon_SuperShotgun (edict_t *ent);
 void Weapon_Machinegun (edict_t *ent);
 void Weapon_Chaingun (edict_t *ent);
 void Weapon_HyperBlaster (edict_t *ent);
+void Weapon_Flamethrower (edict_t *ent);
 void Weapon_RocketLauncher (edict_t *ent);
 void Weapon_Grenade (edict_t *ent);
 void Weapon_GrenadeLauncher (edict_t *ent);
@@ -464,6 +465,8 @@ qboolean Add_Ammo (edict_t *ent, gitem_t *item, int count)
 		max = ent->client->pers.max_cells;
 	else if (item->tag == AMMO_SLUGS)
 		max = ent->client->pers.max_slugs;
+	else if (item->tag == AMMO_FUEL)
+		max = ent->client->pers.max_fuel;
 	else
 		return false;
 
@@ -1496,7 +1499,7 @@ always owned, never in the world
 /*QUAKED weapon_railgun (.3 .3 1) (-16 -16 -16) (16 16 16)
 */
 	{
-		"weapon_railgun", 
+		"weapon_railgun",
 		Pickup_Weapon,
 		Use_Weapon,
 		Drop_Weapon,
@@ -2109,6 +2112,56 @@ tank commander's head
 		NULL,
 		0,
 /* precache */ "items/s_health.wav items/n_health.wav items/l_health.wav items/m_health.wav"
+	},
+
+	// port additions live at the END of the list: itemlist position is the
+	// item index stored raw in savegames (inventory[], F_ITEM fields), so
+	// inserting mid-list silently remaps every later item in older saves
+
+/*QUAKED weapon_flamethrower (.3 .3 1) (-16 -16 -16) (16 16 16)
+*/
+	{
+		"weapon_flamethrower",
+		Pickup_Weapon,
+		Use_Weapon,
+		Drop_Weapon,
+		Weapon_Flamethrower,
+		"misc/w_pkup.wav",
+		"models/weapons/g_hyperb/tris.md2", EF_ROTATE,
+		"models/weapons/v_flamer/tris.md2",
+/* icon */		"w_flamer",
+/* pickup */	"Flamethrower",
+		0,
+		1,
+		"Fuel",
+		IT_WEAPON|IT_STAY_COOP,
+		WEAP_HYPERBLASTER,
+		NULL,
+		0,
+/* precache */ "weapons/rockfly.wav weapons/noammo.wav"
+	},
+
+/*QUAKED ammo_fuel (.3 .3 1) (-16 -16 -16) (16 16 16)
+*/
+	{
+		"ammo_fuel",
+		Pickup_Ammo,
+		NULL,
+		Drop_Ammo,
+		NULL,
+		"misc/am_pkup.wav",
+		"models/items/ammo/cells/medium/tris.md2", 0,
+		NULL,
+/* icon */		"a_fuel",
+/* pickup */	"Fuel",
+/* width */		3,
+		50,
+		NULL,
+		IT_AMMO,
+		0,
+		NULL,
+		AMMO_FUEL,
+/* precache */ ""
 	},
 
 	// end of list marker

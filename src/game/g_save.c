@@ -71,6 +71,7 @@ field_t fields[] = {
 	{"mynoise2", FOFS(mynoise2), F_EDICT, FFL_NOSPAWN},
 	{"target_ent", FOFS(target_ent), F_EDICT, FFL_NOSPAWN},
 	{"chain", FOFS(chain), F_EDICT, FFL_NOSPAWN},
+	{"burn_attacker", FOFS(burn_attacker), F_EDICT, FFL_NOSPAWN},
 
 	{"prethink", FOFS(prethink), F_FUNCTION, FFL_NOSPAWN},
 	{"think", FOFS(think), F_FUNCTION, FFL_NOSPAWN},

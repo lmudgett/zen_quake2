@@ -584,6 +584,9 @@ typedef struct
 #define	EF_BLUEHYPERBLASTER 0x00400000
 #define EF_SPINNINGLIGHTS	0x00800000
 #define EF_PLASMA			0x01000000
+// CAUTION (port): the CLIENT interprets this bit as EF_BURNING -- on fire,
+// flame column + flicker light (see src/game/q_shared.h). The xatrix trap
+// visual is gone; do not emit EF_TRAP expecting trap particles.
 #define EF_TRAP				0x02000000
 
 //ROGUE

@@ -617,6 +617,14 @@ void medic_cable_attack (edict_t *self)
 		self->enemy->targetname = NULL;
 		self->enemy->combattarget = NULL;
 		self->enemy->deathtarget = NULL;
+		// the corpse may carry death-only state the respawn never resets:
+		// a fly swarm and its looping buzz, fire, charring, and the
+		// decapitated-death flag
+		self->enemy->s.effects = 0;
+		self->enemy->s.sound = 0;
+		self->enemy->s.renderfx &= ~RF_CHARRED;
+		self->enemy->headless = false;
+		self->enemy->burnfinished = 0;
 		self->enemy->owner = self;
 		ED_CallSpawn (self->enemy);
 		self->enemy->owner = NULL;

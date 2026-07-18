@@ -750,6 +750,14 @@ void G_SetClientEffects (edict_t *ent)
 	ent->s.effects = 0;
 	ent->s.renderfx = 0;
 
+	// on fire: this wholesale reset would otherwise strip the burn from
+	// players every frame (monsters keep their effects; players rebuild
+	// them here), so re-apply from the burn timer
+	if (level.time < ent->burnfinished)
+		ent->s.effects |= EF_BURNING;
+	if (ent->health <= 0 && ent->burnfinished > 0)
+		ent->s.renderfx |= RF_CHARRED;	// died burning: charred until respawn
+
 	if (ent->health <= 0 || level.intermissiontime)
 		return;
 

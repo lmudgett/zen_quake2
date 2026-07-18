@@ -84,6 +84,26 @@ qboolean CanDamage (edict_t *targ, edict_t *inflictor)
 }
 
 
+// monsters that are machines: no blood pools under their wrecks
+static const char *machine_monsters[] = {
+	"monster_tank",			// also matches monster_tank_commander
+	"monster_supertank", "monster_boss2", "monster_jorg", "monster_makron",
+	"monster_flyer", "monster_hover", "monster_floater", NULL
+};
+
+static qboolean MonsterIsMachine (edict_t *ent)
+{
+	int		i;
+
+	if (!ent->classname)
+		return false;
+	for (i = 0; machine_monsters[i]; i++)
+		if (!strncmp (ent->classname, machine_monsters[i],
+				strlen (machine_monsters[i])))
+			return true;
+	return false;
+}
+
 /*
 ============
 Killed
@@ -116,10 +136,30 @@ void Killed (edict_t *targ, edict_t *inflictor, edict_t *attacker, int damage, v
 		return;
 	}
 
+	if (targ->s.effects & EF_BURNING)
+		targ->s.renderfx |= RF_CHARRED;	// died on fire: blackened remains
+
 	if ((targ->svflags & SVF_MONSTER) && (targ->deadflag != DEAD_DEAD))
 	{
 		targ->touch = NULL;
 		monster_death_use (targ);
+
+		// a pool of blood spreads under the corpse (client-side decal
+		// grown over a few seconds); sized to the monster's bulk.
+		// Machines don't bleed.
+		if (!MonsterIsMachine (targ))
+		{
+			int	pr = (int)(targ->maxs[0] * 1.2f + 12);
+			if (pr < 20)	pr = 20;
+			if (pr > 60)	pr = 60;
+			gi.WriteByte (svc_temp_entity);
+			gi.WriteByte (TE_BLOOD_POOL);
+			gi.WritePosition (targ->s.origin);
+			gi.WriteByte (pr);
+			// ALL, not PVS: the pool is permanent scenery -- a kill that
+			// happens out of sight must still leave one to find later
+			gi.multicast (targ->s.origin, MULTICAST_ALL);
+		}
 	}
 
 	targ->die (targ, inflictor, attacker, damage, point);
@@ -573,4 +613,79 @@ void T_RadiusDamage (edict_t *inflictor, edict_t *attacker, float damage, edict_
 			}
 		}
 	}
+}
+
+
+/*
+============
+Ignite
+
+Set a monster (or player) on fire: several seconds of damage-over-time,
+and living monsters PANIC -- they break off the fight and sprint blindly,
+direction rerolled every burn tick (see ai_ checks of AI_BURNING_PANIC).
+Re-igniting refreshes the burn.
+============
+*/
+void Ignite (edict_t *targ, edict_t *attacker)
+{
+	if (!targ->takedamage)
+		return;
+	if (!(targ->svflags & SVF_MONSTER) && !targ->client)
+		return;			// crates, doors etc don't catch fire
+
+	targ->s.effects |= EF_BURNING;
+	targ->burnfinished = level.time + 5;
+	targ->burn_attacker = attacker;
+
+	if ((targ->svflags & SVF_MONSTER) && targ->health > 0
+		&& !(targ->monsterinfo.aiflags & AI_BURNING_PANIC))
+	{
+		targ->monsterinfo.aiflags |= AI_BURNING_PANIC;
+		targ->ideal_yaw = random () * 360;
+		if (targ->monsterinfo.run)
+			targ->monsterinfo.run (targ);	// into the sprint anim
+	}
+}
+
+/*
+============
+G_RunBurn
+
+Per-frame burn upkeep, called for every entity from G_RunFrame. Ticks
+damage twice a second, rerolls the panic direction, and puts the fire
+out when the timer lapses. Corpses keep burning (and can crisp all the
+way into gibs); flame projectiles carry EF_BURNING too but are not
+monsters/clients, so they pass straight through here.
+============
+*/
+void G_RunBurn (edict_t *ent)
+{
+	edict_t	*attacker;
+
+	if (!(ent->s.effects & EF_BURNING))
+		return;
+	if (!(ent->svflags & SVF_MONSTER) && !ent->client)
+		return;
+
+	if (level.time > ent->burnfinished)
+	{
+		ent->s.effects &= ~EF_BURNING;
+		ent->monsterinfo.aiflags &= ~AI_BURNING_PANIC;
+		return;
+	}
+	if (level.time < ent->burn_tick)
+		return;
+	ent->burn_tick = level.time + 0.5;
+
+	if (ent->health <= 0)
+		return;			// corpses burn visually but don't cook into gibs
+						// (the charred body is the trophy)
+
+	attacker = ent->burn_attacker;
+	if (!attacker || !attacker->inuse)
+		attacker = world;
+	T_Damage (ent, world, attacker, vec3_origin, ent->s.origin, vec3_origin,
+		5, 0, DAMAGE_ENERGY | DAMAGE_NO_KNOCKBACK, MOD_FLAMER);
+	if (ent->inuse && ent->health > 0)
+		ent->ideal_yaw = random () * 360;	// flail a new way
 }

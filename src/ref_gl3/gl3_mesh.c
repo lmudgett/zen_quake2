@@ -681,6 +681,14 @@ void GL3_DrawAliasModel (entity_t *e, const float *viewproj)
 		}
 	}
 
+	if (e->flags & RF_CHARRED)
+	{	// burned to death: the same skin, crushed to sooty black with a
+		// faint warm remnant so the silhouette still reads in the dark
+		shadelight[0] = shadelight[0] * 0.16f + 0.02f;
+		shadelight[1] = shadelight[1] * 0.12f + 0.012f;
+		shadelight[2] = shadelight[2] * 0.10f + 0.008f;
+	}
+
 	// PGM: ir goggles color override (Rogue)
 	if ((r_newrefdef.rdflags & RDF_IRGOGGLES) && (e->flags & RF_IR_VISIBLE))
 	{
@@ -1151,6 +1159,7 @@ void GL3_DrawSpriteModel (entity_t *e, const float *viewproj)
 	dsprframe_t		*frame;
 	image_t			*skin;
 	vec3_t			vpn, vright, vup;
+	vec3_t			light = { 1, 1, 1 };
 	float			alpha = 1.0f;
 	int				framenum, i;
 	gl3_meshvert_t	v[4];
@@ -1165,6 +1174,20 @@ void GL3_DrawSpriteModel (entity_t *e, const float *viewproj)
 
 	if (e->flags & RF_TRANSLUCENT)
 		alpha = e->alpha;
+
+	// RF_MINLIGHT on a sprite = sit it in the scene's light (corpse flies).
+	// Everything else keeps id's unlit white -- the BFG ball and explosion
+	// sprites must glow in the dark, and id never lit sprites at all.
+	if ((e->flags & RF_MINLIGHT) && !(e->flags & RF_FULLBRIGHT)
+		&& !(r_newrefdef.rdflags & RDF_NOWORLDMODEL))
+	{
+		R_LightPoint (e->origin, light);
+		for (i = 0; i < 3; i++)
+		{
+			if (light[i] < 0.10f)	light[i] = 0.10f;	// the MINLIGHT part
+			if (light[i] > 1.0f)	light[i] = 1.0f;
+		}
+	}
 
 	// billboard axes from the view angles
 	AngleVectors (r_newrefdef.viewangles, vpn, vright, vup);
@@ -1183,7 +1206,9 @@ void GL3_DrawSpriteModel (entity_t *e, const float *viewproj)
 	{
 		v[i].st[0] = corner_st[i][0];
 		v[i].st[1] = corner_st[i][1];
-		v[i].color[0] = v[i].color[1] = v[i].color[2] = 1.0f;
+		v[i].color[0] = light[0];
+		v[i].color[1] = light[1];
+		v[i].color[2] = light[2];
 		v[i].color[3] = alpha;
 	}
 

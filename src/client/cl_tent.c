@@ -97,6 +97,7 @@ struct sfx_s	*cl_sfx_plasexp;
 struct sfx_s	*cl_sfx_footsteps[4];
 
 struct model_s	*cl_mod_explode;
+struct model_s	*cl_mod_flies;		// corpse-flies sprite (cl_fx.c CL_FlyEffect)
 struct model_s	*cl_mod_smoke;
 struct model_s	*cl_mod_flash;
 struct model_s	*cl_mod_parasite_segment;
@@ -172,6 +173,7 @@ CL_RegisterTEntModels
 void CL_RegisterTEntModels (void)
 {
 	cl_mod_explode = re.RegisterModel ("models/objects/explode/tris.md2");
+	cl_mod_flies = re.RegisterModel ("sprites/s_fly.sp2");
 	cl_mod_smoke = re.RegisterModel ("models/objects/smoke/tris.md2");
 	cl_mod_flash = re.RegisterModel ("models/objects/flash/tris.md2");
 	cl_mod_parasite_segment = re.RegisterModel ("models/monsters/parasite/segment/tris.md2");
@@ -710,6 +712,20 @@ void CL_ParseTEnt (void)
 		MSG_ReadPos (&net_message, pos);
 		MSG_ReadDir (&net_message, dir);
 		CL_ParticleEffect (pos, dir, 0xe8, 60);
+		CL_ParticleEffect (pos, dir, 0xe8, 30);		// denser spray
+		// some hits fling splatter onto whatever is close behind/below
+		if (re.AddDecal && frand() < 0.5f)
+			re.AddDecal (pos, NULL, 8.0f + frand()*6.0f, DECAL_BLOOD);
+		break;
+
+	case TE_BLOOD_POOL:		// monster died: blood spreads under the corpse
+		MSG_ReadPos (&net_message, pos);
+		cnt = MSG_ReadByte (&net_message);	// pool radius, sized server-side
+		if (re.AddDecal)
+		{
+			vec3_t	up = { 0, 0, 1 };
+			re.AddDecal (pos, up, (float)cnt, DECAL_BLOOD_POOL);
+		}
 		break;
 
 	case TE_GUNSHOT:			// bullet hitting wall
@@ -957,6 +973,13 @@ void CL_ParseTEnt (void)
 		CL_BFGExplosionParticles (pos);
 		if (re.AddDecal)
 			re.AddDecal (pos, NULL, 45.0f, DECAL_BFG);
+		break;
+
+	case TE_GRENADE_BOUNCE:		// launcher grenade scuffing a surface
+		MSG_ReadPos (&net_message, pos);
+		MSG_ReadDir (&net_message, dir);
+		if (re.AddDecal)
+			re.AddDecal (pos, dir, 4.5f, DECAL_SCORCH);
 		break;
 
 	case TE_BFG_LASER:
