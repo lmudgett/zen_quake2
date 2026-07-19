@@ -98,6 +98,7 @@ static GLuint	decal_prog;
 static GLint	decal_u_mvp, decal_u_color, decal_u_grow;
 
 #define HEAT_TIME	2.5f	// seconds a fresh energy burn stays hot
+#define RAIL_HOT_TIME	4.0f	// seconds a rail mark takes to cool blue->black
 static GLuint	heat_prog;
 static GLint	heat_u_mvp, heat_u_invscreen, heat_u_time, heat_u_heat;
 
@@ -814,6 +815,18 @@ void GL3_DrawDecals (const float *viewproj)
 
 		if (dc->type == DECAL_BFG)
 			glUniform4f (decal_u_color, 0.45f, 1.0f, 0.55f, alpha);
+		else if (dc->type == DECAL_RAIL)
+		{	// fresh rail hit glows electric blue (HDR push feeds the bloom),
+			// then the charge bleeds away leaving a charred black ring --
+			// the multiplier crushes the blue texture toward black
+			float	heat = 1.0f - age / RAIL_HOT_TIME;
+			if (heat < 0.0f)
+				heat = 0.0f;
+			glUniform4f (decal_u_color,
+				0.10f + 1.2f * heat,
+				0.10f + 1.9f * heat,
+				0.14f + 2.6f * heat, alpha);
+		}
 		else if (dc->type == DECAL_ENERGY && age < HEAT_TIME)
 		{	// fresh burn glows hot: push the embers past 1.0 -- the HDR
 			// scene target keeps it and the bloom pass makes it radiate

@@ -858,7 +858,9 @@ void CL_ParseTEnt (void)
 			VectorSubtract (pos2, pos, rdir);
 			VectorNormalize (rdir);
 			VectorMA (pos2, -1.0f, rdir, rpos);
-			re.AddDecal (rpos, NULL, 6.0f, DECAL_RAIL);
+			// double a bullet mark (avg ~2.6): the texture fills its quad
+			// like bullet.tga does, so radius compares one-to-one
+			re.AddDecal (rpos, NULL, 5.2f, DECAL_RAIL);
 		}
 		break;
 

@@ -94,20 +94,23 @@ def energy(px, py, rr, ang):
 
 def rail(px, py, rr, ang):
     # Quake 3 rail/plasma mark: hot pale-blue core, vivid blue ring,
-    # dark charred-blue fringe breaking up with noise
+    # dark charred-blue fringe breaking up with noise. Rings fill the
+    # quad out to ~0.9 (like bullet's ~0.8) so the stamped radius IS the
+    # visible size -- the renderer tints this from glow-blue to black as
+    # the mark ages (GL3_DrawDecals DECAL_RAIL branch)
     n = fbm(px * 0.28, py * 0.28, 40)
     r = rr * (1.0 + 0.25 * (n - 0.5))
-    if r < 0.16:        # white-hot core
+    if r < 0.20:        # white-hot core
         return 210, 235, 255, 0.95
-    if r < 0.45:        # vivid blue ring
-        t = (r - 0.16) / 0.29
+    if r < 0.60:        # vivid blue ring
+        t = (r - 0.20) / 0.40
         return (int(120 - 90 * t + 40 * n), int(170 - 100 * t + 40 * n),
                 int(255 - 60 * t), (0.92 - 0.25 * t) * (0.75 + 0.25 * n))
-    if r < 0.72:        # charred blue rim
-        t = (r - 0.45) / 0.27
+    if r < 0.88:        # charred blue rim
+        t = (r - 0.60) / 0.28
         a = (0.65 - 0.45 * t) * (0.5 + 0.5 * n)
         return 16, 26, int(70 - 30 * t), a
-    a = max(0.0, 1.0 - (r - 0.72) / 0.2) * 0.25 * n
+    a = max(0.0, 1.0 - (r - 0.88) / 0.12) * 0.25 * n
     return 12, 18, 36, a
 
 def blood(px, py, rr, ang):
