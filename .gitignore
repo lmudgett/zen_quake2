@@ -11,6 +11,7 @@ baseq2/video/
 ctf/*.pak
 
 # Editor/IDE
+.claude/
 .vs/
 .vscode/
 .idea/
