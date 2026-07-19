@@ -60,6 +60,32 @@ layer) with full behavioural parity to id's `ref_gl`, plus modern additions:
 - **Widescreen HUD** — `hud_wide 1` anchors health/ammo to the screen edges;
   the default is the classic centered layout (statusbar layout program,
   game-DLL side)
+- **Flamethrower** — a new weapon: the trigger sprays a cone of flame
+  tongues that ignite whatever they touch. The direct hit stings, but the
+  fire is the killer — victims burn with damage-over-time until the
+  flames gutter out (re-igniting refreshes the burn), and a burning
+  monster breaks off the fight into a blind panic sprint. Stray tongues
+  char scorch marks onto the walls. Runs on the new **Fuel** ammo; place
+  `weapon_flamethrower` / `ammo_fuel` in a map, or `give flamethrower`
+  (the generated view model lives in `baseq2/models/weapons/v_flamer`,
+  built by `tools/gen_flamer_model.py`)
+- **Enhanced monster AI** — `ai_enhanced` (default on; `0` restores the
+  stock id brain for comparison). Monsters fight as a pack: spotting a
+  player triggers a shout that aggros everyone in earshot and chains
+  through the group (ambushers keep their ambush); idle monsters that
+  see a freshly killed ally go on alert and hunt the area. In combat
+  they lead moving targets with projectile flight time (skill-scaled),
+  fan out to close from different directions instead of forming single
+  file, and stagger their ranged attack starts so a pack pours sustained
+  fire rather than one synchronized volley. They react to danger:
+  sidestep or duck off the firing line when a projectile is inbound,
+  flee live grenades until just after the bang, and panic at watching an
+  ally burn to death or burst apart. Below quarter health a monster
+  makes a once-per-life dash for real cover — a heading that actually
+  breaks your line of sight — and pure-ranged monsters back-step to keep
+  you out of knife range. When a pursuit runs dry they hunt-wander the
+  area before giving up. The nemesis boss is fearless: no retreat, no
+  panic, no volley ration
 - **Boot kick** — bind a key to `kick` for a Duke-style melee boot: the leg
   lashes out, damages and shoves whatever it lands on, and can punt buttons
   and barrels (`src/game/g_kick.c`; the generated leg view model lives in
