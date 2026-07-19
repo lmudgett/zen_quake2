@@ -99,6 +99,7 @@ static GLint	decal_u_mvp, decal_u_color, decal_u_grow;
 
 #define HEAT_TIME	2.5f	// seconds a fresh energy burn stays hot
 #define RAIL_HOT_TIME	4.0f	// seconds a rail mark takes to cool blue->black
+#define SCORCH_HOT_TIME	3.0f	// seconds flame/blast soot keeps its ember glow
 static GLuint	heat_prog;
 static GLint	heat_u_mvp, heat_u_invscreen, heat_u_time, heat_u_heat;
 
@@ -826,6 +827,13 @@ void GL3_DrawDecals (const float *viewproj)
 				0.10f + 1.2f * heat,
 				0.10f + 1.9f * heat,
 				0.14f + 2.6f * heat, alpha);
+		}
+		else if (dc->type == DECAL_SCORCH && age < SCORCH_HOT_TIME)
+		{	// fresh burn (flamethrower scuff, blast ring): embers glow
+			// orange through the soot, then cool to the plain black mark
+			float	heat = 1.0f - age / SCORCH_HOT_TIME;
+			glUniform4f (decal_u_color, 1.0f + 6.0f * heat,
+				1.0f + 2.0f * heat, 1.0f + 0.3f * heat, alpha);
 		}
 		else if (dc->type == DECAL_ENERGY && age < HEAT_TIME)
 		{	// fresh burn glows hot: push the embers past 1.0 -- the HDR
