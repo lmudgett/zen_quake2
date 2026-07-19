@@ -53,6 +53,12 @@ layer) with full behavioural parity to id's `ref_gl`, plus modern additions:
 - **Voxel render mode** — `r_voxelize` rebuilds the world (and, via
   `r_voxelize_entities`, monsters/items) as a mesh of textured cubes at
   `r_voxelsize` units; the real Quake textures project onto the cube faces
+- The video menu covers the whole modern feature set — mode, fullscreen,
+  brightness, UI scale, antialiasing, anisotropy, render scale, bloom,
+  dynamic-light and bump-map modes, shadows, hi-res textures, water
+  opacity — and everything applies live on Apply
+- `screenshot` writes numbered compressed PNGs (`screenshot000.png`…)
+  instead of overwriting a single raw TGA
 - Live `vid_fullscreen` / `gl_mode` / UI-scale changes (no `vid_restart`)
 
 ### Gameplay & engine
@@ -86,6 +92,22 @@ layer) with full behavioural parity to id's `ref_gl`, plus modern additions:
   you out of knife range. When a pursuit runs dry they hunt-wander the
   area before giving up. The nemesis boss is fearless: no retreat, no
   panic, no volley ration
+- **Trophy heads & gore** — gibbing a monster flings its *own* severed
+  head, carved out of the monster's real model and textured with its real
+  skin (`tools/gen_heads.py`, 17 monster species; soldier variants and
+  pain skins carry over). Heads tumble off in a random direction, settle
+  into a tipped or rolled resting pose when they land, and — like Quake 1
+  — stay on the floor for the rest of the level while ordinary gibs
+  vanish (capped; past the cap the oldest head makes way). Monsters whose
+  death animation already takes the head off (the infantry's decapitation
+  death, the gunner) leave headless corpses: gibbing one never yields a
+  second head, and its gib pile swaps the skull-shaped bone chunks for
+  meat. Anything that dies burning is left a blackened, charred corpse
+  and throws charred chunks when gibbed
+- Smaller touches: light guards' blasters carry a pulsing blue muzzle
+  glow; dropped weapons fall to the actual floor instead of freezing
+  mid-air where their owner died; sound defaults to 44.1 kHz / 16-bit
+  (id shipped 11 kHz)
 - **Boot kick** — bind a key to `kick` for a Duke-style melee boot: the leg
   lashes out, damages and shoves whatever it lands on, and can punt buttons
   and barrels (`src/game/g_kick.c`; the generated leg view model lives in
@@ -121,6 +143,17 @@ This builds five targets:
 
 > Adding a **new** `.c` file requires re-running the configure step
 > (`cmake -S . -B build`) — the source lists use a glob that CMake caches.
+
+Extras:
+
+- The `release_pak` target packs the repository's `baseq2/` tree (the
+  generated assets: heads, decals, flamer/kick models, fly sprites) into
+  `build/baseq2/pak1.pak` plus a manifest; development runs on the loose
+  files, since paks shadow them.
+- Opt-in **Authenticode signing** of the exe and DLLs: configure with
+  `-DQ2_SIGN_SHA1=<cert thumbprint>` (certificate store) or
+  `-DQ2_SIGN_PFX=<file.pfx>` `[-DQ2_SIGN_PFX_PASSWORD=…]`. Signatures are
+  RFC 3161-timestamped and re-applied on every rebuild.
 
 ## Running
 
